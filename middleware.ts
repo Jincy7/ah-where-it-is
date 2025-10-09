@@ -13,13 +13,14 @@ import { NextResponse } from 'next/server'
  *
  * Public routes:
  * - /login
+ * - /signup
  * - /_next/* (Next.js internals)
  * - /favicon.ico
  * - /api/* (API routes)
  *
  * Authentication flow:
  * - Unauthenticated users accessing protected routes → redirect to /login
- * - Authenticated users accessing /login → redirect to /
+ * - Authenticated users accessing /login or /signup → redirect to /
  */
 export async function middleware(request: NextRequest) {
   const { user, response } = await updateSession(request)
@@ -51,8 +52,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // If user is authenticated and trying to access login page, redirect to home
-  if (user && pathname === '/login') {
+  // If user is authenticated and trying to access login or signup page, redirect to home
+  if (user && (pathname === '/login' || pathname === '/signup')) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/'
     return NextResponse.redirect(redirectUrl)
