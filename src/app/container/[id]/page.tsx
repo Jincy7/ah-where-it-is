@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Pencil, QrCode, Package, MapPin } from 'lucide-react'
+import { Pencil, Package, MapPin } from 'lucide-react'
 import { DeleteButton } from '@/components/containers/delete-button'
+import { QrCodeButton } from '@/components/containers/qr-code-button'
 import { ItemList } from '@/components/items/item-list'
 import { notFound, redirect } from 'next/navigation'
 
@@ -78,10 +79,10 @@ export default async function ContainerDetailPage({
             containerId={container.id}
             containerName={container.name}
           />
-          <Button variant="outline">
-            <QrCode className="mr-2 h-4 w-4" />
-            QR 출력
-          </Button>
+          <QrCodeButton
+            containerId={container.id}
+            containerName={container.name}
+          />
         </div>
       </div>
 
