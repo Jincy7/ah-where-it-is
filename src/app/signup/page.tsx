@@ -1,25 +1,42 @@
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
-import { SignupForm } from '@/components/auth/signup-form'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
+import { createClient } from "@/lib/supabase/server";
+import { SignupForm } from "@/components/auth/signup-form";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export default async function SignupPage() {
-  const supabase = await createClient()
+  const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await supabase.auth.getUser();
 
   // If user is already logged in, redirect to home
   if (user) {
-    redirect('/')
+    redirect("/");
   }
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md space-y-8">
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-4">
+          <div className="flex justify-center">
+            <Image
+              priority
+              src="/agu-welcome.svg"
+              alt="환영합니다"
+              width={200}
+              height={200}
+              className="h-48 w-48"
+            />
+          </div>
           <h1 className="text-4xl font-bold tracking-tight">아 그거 어딨지</h1>
           <p className="text-lg text-muted-foreground">보관함 관리 시스템</p>
         </div>
@@ -47,8 +64,11 @@ export default async function SignupPage() {
 
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
-                이미 계정이 있으신가요?{' '}
-                <Link href="/login" className="font-medium text-primary hover:underline">
+                이미 계정이 있으신가요?{" "}
+                <Link
+                  href="/login"
+                  className="font-medium text-primary hover:underline"
+                >
                   로그인
                 </Link>
               </p>
@@ -61,5 +81,5 @@ export default async function SignupPage() {
         </p>
       </div>
     </div>
-  )
+  );
 }

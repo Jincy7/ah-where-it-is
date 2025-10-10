@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { ContainerWithDetails } from '@/lib/db'
 import { ContainerCard } from './container-card'
 import { Button } from '@/components/ui/button'
@@ -14,9 +15,13 @@ export function ContainerList({ containers }: ContainerListProps) {
   if (containers.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-          <PackagePlus className="h-10 w-10 text-muted-foreground" />
-        </div>
+        <Image
+          src="/agu-container.svg"
+          alt="보관함이 없습니다"
+          width={160}
+          height={160}
+          className="h-40 w-40"
+        />
         <h3 className="mt-4 text-lg font-semibold">보관함이 없습니다</h3>
         <p className="mb-4 mt-2 text-sm text-muted-foreground">
           첫 번째 보관함을 만들어서 물품을 정리해보세요.

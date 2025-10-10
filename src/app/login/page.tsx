@@ -1,24 +1,41 @@
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
-import { LoginForm } from '@/components/auth/login-form'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import Image from "next/image";
+import { createClient } from "@/lib/supabase/server";
+import { LoginForm } from "@/components/auth/login-form";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default async function LoginPage() {
-  const supabase = await createClient()
+  const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await supabase.auth.getUser();
 
   // If user is already logged in, redirect to home
   if (user) {
-    redirect('/')
+    redirect("/");
   }
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md space-y-8">
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-4">
+          <div className="flex justify-center">
+            <Image
+              priority
+              src="/agu-welcome.svg"
+              alt="환영합니다"
+              width={200}
+              height={200}
+              className="h-48 w-48"
+            />
+          </div>
           <h1 className="text-4xl font-bold tracking-tight">아 그거 어딨지</h1>
           <p className="text-lg text-muted-foreground">보관함 관리 시스템</p>
         </div>
@@ -26,9 +43,7 @@ export default async function LoginPage() {
         <Card>
           <CardHeader>
             <CardTitle>로그인</CardTitle>
-            <CardDescription>
-              계정 정보를 입력하여 로그인하세요
-            </CardDescription>
+            <CardDescription>계정 정보를 입력하여 로그인하세요</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <LoginForm />
@@ -46,8 +61,11 @@ export default async function LoginPage() {
 
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
-                계정이 없으신가요?{' '}
-                <Link href="/signup" className="font-medium text-primary hover:underline">
+                계정이 없으신가요?{" "}
+                <Link
+                  href="/signup"
+                  className="font-medium text-primary hover:underline"
+                >
                   회원가입
                 </Link>
               </p>
@@ -60,5 +78,5 @@ export default async function LoginPage() {
         </p>
       </div>
     </div>
-  )
+  );
 }

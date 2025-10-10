@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useOptimistic, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { Item } from '@/lib/db'
 import {
   Table,
@@ -158,13 +159,23 @@ export function ItemList({ containerId, items: initialItems }: ItemListProps) {
       {/* Items Table */}
       {visibleItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-            {hasNoResults ? (
-              <SearchX className="h-10 w-10 text-muted-foreground" />
-            ) : (
-              <PackageOpen className="h-10 w-10 text-muted-foreground" />
-            )}
-          </div>
+          {hasNoResults ? (
+            <Image
+              src="/agu-search.svg"
+              alt="검색 결과가 없습니다"
+              width={160}
+              height={160}
+              className="h-40 w-40"
+            />
+          ) : (
+            <Image
+              src="/agu-container.svg"
+              alt="물품이 없습니다"
+              width={160}
+              height={160}
+              className="h-40 w-40"
+            />
+          )}
           <h3 className="mt-4 text-lg font-semibold">
             {hasNoResults ? '검색 결과가 없습니다' : '물품이 없습니다'}
           </h3>

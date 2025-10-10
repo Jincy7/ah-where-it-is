@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Home, Settings, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { UserMenu } from "./user-menu";
@@ -29,6 +30,13 @@ export async function Navbar() {
         {/* Logo */}
         <div className="flex items-center gap-6 px-4">
           <Link href="/" className="flex items-center space-x-2">
+            <Image
+              src="/agu-logo-2.svg"
+              alt="아 그거 어딨지"
+              width={40}
+              height={40}
+              className="h-10 w-10"
+            />
             <span className="text-xl font-bold">아 그거 어딨지</span>
           </Link>
 

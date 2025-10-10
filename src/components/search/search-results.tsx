@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Image from 'next/image'
 import { ItemWithContainer } from '@/lib/db/items'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -103,9 +104,13 @@ export function SearchResults({ initialQuery, initialItems }: SearchResultsProps
       {/* Results */}
       {!hasQuery ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-            <Search className="h-10 w-10 text-muted-foreground" />
-          </div>
+          <Image
+            src="/agu-search.svg"
+            alt="검색어를 입력하세요"
+            width={160}
+            height={160}
+            className="h-40 w-40"
+          />
           <h3 className="mt-4 text-lg font-semibold">검색어를 입력하세요</h3>
           <p className="mt-2 text-sm text-muted-foreground">
             물품명 또는 설명으로 검색할 수 있습니다
@@ -113,9 +118,13 @@ export function SearchResults({ initialQuery, initialItems }: SearchResultsProps
         </div>
       ) : !hasResults ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-            <SearchX className="h-10 w-10 text-muted-foreground" />
-          </div>
+          <Image
+            src="/agu-search.svg"
+            alt="검색 결과가 없습니다"
+            width={160}
+            height={160}
+            className="h-40 w-40"
+          />
           <h3 className="mt-4 text-lg font-semibold">검색 결과가 없습니다</h3>
           <p className="mt-2 text-sm text-muted-foreground">
             다른 검색어를 시도해보세요
