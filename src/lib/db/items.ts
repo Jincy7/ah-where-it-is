@@ -6,26 +6,91 @@ export type ItemInsert = TablesInsert<'items'>
 export type ItemUpdate = TablesUpdate<'items'>
 
 /**
- * Get all items in a container, ordered by most recently created.
+ * Filter options for querying items
+ */
+export interface ItemFilterOptions {
+  /** Search query to match against item name and description (case-insensitive) */
+  searchQuery?: string
+  /** Array of container IDs to filter by (optional, overrides containerId parameter if provided) */
+  containerIds?: string[]
+  /** Filter items created on or after this date (ISO string) */
+  dateFrom?: string
+  /** Filter items created on or before this date (ISO string) */
+  dateTo?: string
+}
+
+/**
+ * Get all items in a container with optional search and filtering, ordered by most recently created.
  *
- * @param containerId - The container ID to filter items
- * @returns Array of items
+ * @param containerId - The container ID to filter items (can be overridden by options.containerIds)
+ * @param options - Optional filter and search parameters
+ * @returns Array of items matching the criteria
  * @throws Error if database query fails
  *
  * @example
  * ```ts
+ * // Basic usage - get all items in a container
  * const items = await getItems(containerId)
+ *
+ * // Search items by name or description
+ * const searchResults = await getItems(containerId, {
+ *   searchQuery: 'winter jacket'
+ * })
+ *
+ * // Filter by multiple containers
+ * const multiContainerItems = await getItems('', {
+ *   containerIds: [containerId1, containerId2]
+ * })
+ *
+ * // Filter by date range
+ * const recentItems = await getItems(containerId, {
+ *   dateFrom: '2024-01-01',
+ *   dateTo: '2024-12-31'
+ * })
+ *
+ * // Combine multiple filters
+ * const filteredItems = await getItems(containerId, {
+ *   searchQuery: 'jacket',
+ *   dateFrom: '2024-01-01'
+ * })
  * ```
  */
-export async function getItems(containerId: string): Promise<Item[]> {
+export async function getItems(
+  containerId: string,
+  options?: ItemFilterOptions
+): Promise<Item[]> {
   try {
     const supabase = await createClient()
 
-    const { data, error } = await supabase
-      .from('items')
-      .select('*')
-      .eq('container_id', containerId)
-      .order('created_at', { ascending: false })
+    // Start building the query
+    let query = supabase.from('items').select('*')
+
+    // Apply container filter
+    // If containerIds array is provided in options, use that; otherwise use the containerId parameter
+    if (options?.containerIds && options.containerIds.length > 0) {
+      query = query.in('container_id', options.containerIds)
+    } else if (containerId) {
+      query = query.eq('container_id', containerId)
+    }
+
+    // Apply search query to name and description using ILIKE for case-insensitive search
+    if (options?.searchQuery && options.searchQuery.trim()) {
+      const searchPattern = `%${options.searchQuery.trim()}%`
+      query = query.or(`name.ilike.${searchPattern},description.ilike.${searchPattern}`)
+    }
+
+    // Apply date range filters
+    if (options?.dateFrom) {
+      query = query.gte('created_at', options.dateFrom)
+    }
+    if (options?.dateTo) {
+      query = query.lte('created_at', options.dateTo)
+    }
+
+    // Order by most recently created
+    query = query.order('created_at', { ascending: false })
+
+    const { data, error } = await query
 
     if (error) {
       throw new Error(`Failed to fetch items: ${error.message}`)

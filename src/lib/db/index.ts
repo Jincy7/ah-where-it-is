@@ -38,6 +38,7 @@ export {
   type Item,
   type ItemInsert,
   type ItemUpdate,
+  type ItemFilterOptions,
 } from './items'
 
 // Storage

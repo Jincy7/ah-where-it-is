@@ -11,8 +11,10 @@ import { notFound, redirect } from 'next/navigation'
 
 export default async function ContainerDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   const supabase = await createClient()
   const {
@@ -34,7 +36,17 @@ export default async function ContainerDetailPage({
     notFound()
   }
 
-  const items = await getItems(id)
+  // Parse search params for filtering
+  const resolvedSearchParams = await searchParams
+  const search = typeof resolvedSearchParams.search === 'string' ? resolvedSearchParams.search : undefined
+  const dateFrom = typeof resolvedSearchParams.dateFrom === 'string' ? resolvedSearchParams.dateFrom : undefined
+  const dateTo = typeof resolvedSearchParams.dateTo === 'string' ? resolvedSearchParams.dateTo : undefined
+
+  const items = await getItems(id, {
+    searchQuery: search,
+    dateFrom,
+    dateTo,
+  })
 
   return (
     <div className="space-y-6">
