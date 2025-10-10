@@ -326,3 +326,141 @@ export async function searchAllItems(
     throw error
   }
 }
+
+/**
+ * Container summary type for move operations
+ */
+export interface ContainerSummary {
+  id: string
+  name: string
+}
+
+/**
+ * Get all containers for the current user (simplified list for move operations).
+ * Returns only id and name for dropdown/selection UI components.
+ *
+ * @returns Array of containers with id and name only
+ * @throws Error if database query fails
+ *
+ * @example
+ * ```ts
+ * // Get all containers for move dropdown
+ * const containers = await getAllContainersForMove()
+ * // Returns: [{ id: '...', name: 'Storage Box A' }, ...]
+ * ```
+ */
+export async function getAllContainersForMove(): Promise<ContainerSummary[]> {
+  try {
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+      .from('containers')
+      .select('id, name')
+      .order('name', { ascending: true })
+
+    if (error) {
+      throw new Error(`Failed to fetch containers for move: ${error.message}`)
+    }
+
+    return data || []
+  } catch (error) {
+    console.error('Error in getAllContainersForMove:', error)
+    throw error
+  }
+}
+
+/**
+ * Move an item to a different container.
+ * Validates that both the item and target container exist and belong to the current user.
+ *
+ * @param itemId - The ID of the item to move
+ * @param newContainerId - The ID of the target container
+ * @returns The updated item with new container_id
+ * @throws Error if item not found, container not found, or user doesn't own them
+ *
+ * @example
+ * ```ts
+ * // Move item to a different container
+ * const movedItem = await moveItemToContainer(itemId, newContainerId)
+ * console.log(`Item moved to container: ${movedItem.container_id}`)
+ * ```
+ */
+export async function moveItemToContainer(
+  itemId: string,
+  newContainerId: string
+): Promise<Item> {
+  try {
+    const supabase = await createClient()
+
+    // Step 1: Validate that the item exists and get its current container info
+    const { data: item, error: itemError } = await supabase
+      .from('items')
+      .select(`
+        *,
+        container:containers!inner(
+          id,
+          user_id
+        )
+      `)
+      .eq('id', itemId)
+      .single()
+
+    if (itemError) {
+      if (itemError.code === 'PGRST116') {
+        throw new Error(`Item not found with ID: ${itemId}`)
+      }
+      throw new Error(`Failed to fetch item: ${itemError.message}`)
+    }
+
+    if (!item) {
+      throw new Error(`Item not found with ID: ${itemId}`)
+    }
+
+    // Step 2: Validate that the target container exists and belongs to the same user
+    const { data: targetContainer, error: containerError } = await supabase
+      .from('containers')
+      .select('id, user_id')
+      .eq('id', newContainerId)
+      .single()
+
+    if (containerError) {
+      if (containerError.code === 'PGRST116') {
+        throw new Error(`Target container not found with ID: ${newContainerId}`)
+      }
+      throw new Error(`Failed to fetch target container: ${containerError.message}`)
+    }
+
+    if (!targetContainer) {
+      throw new Error(`Target container not found with ID: ${newContainerId}`)
+    }
+
+    // Step 3: Security check - verify that both item and target container belong to the same user
+    if (item.container.user_id !== targetContainer.user_id) {
+      throw new Error('Cannot move item: user does not own both the item and target container')
+    }
+
+    // Step 4: Update the item's container_id
+    const { data: updatedItem, error: updateError } = await supabase
+      .from('items')
+      .update({
+        container_id: newContainerId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', itemId)
+      .select()
+      .single()
+
+    if (updateError) {
+      throw new Error(`Failed to move item: ${updateError.message}`)
+    }
+
+    if (!updatedItem) {
+      throw new Error('Failed to move item: No data returned')
+    }
+
+    return updatedItem
+  } catch (error) {
+    console.error('Error in moveItemToContainer:', error)
+    throw error
+  }
+}

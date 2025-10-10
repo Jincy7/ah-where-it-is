@@ -90,6 +90,11 @@ export function ItemList({ containerId, items: initialItems }: ItemListProps) {
     })
   }
 
+  function handleMoveItem() {
+    // Refresh the page to show updated item list after move
+    router.refresh()
+  }
+
   function handleClearFilters() {
     setSearchQuery('')
     setDateFrom(undefined)
@@ -177,7 +182,7 @@ export function ItemList({ containerId, items: initialItems }: ItemListProps) {
                 <TableHead className="w-[40%]">물품명</TableHead>
                 <TableHead className="hidden sm:table-cell">설명</TableHead>
                 <TableHead className="hidden md:table-cell">등록일</TableHead>
-                <TableHead className="w-[100px] text-right">작업</TableHead>
+                <TableHead className="w-[140px] text-right">작업</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -186,6 +191,7 @@ export function ItemList({ containerId, items: initialItems }: ItemListProps) {
                   key={item.id}
                   item={item}
                   onDelete={handleDeleteItem}
+                  onMove={handleMoveItem}
                 />
               ))}
             </TableBody>

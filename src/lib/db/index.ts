@@ -36,11 +36,14 @@ export {
   updateItem,
   deleteItem,
   searchAllItems,
+  getAllContainersForMove,
+  moveItemToContainer,
   type Item,
   type ItemInsert,
   type ItemUpdate,
   type ItemFilterOptions,
   type ItemWithContainer,
+  type ContainerSummary,
 } from './items'
 
 // Storage

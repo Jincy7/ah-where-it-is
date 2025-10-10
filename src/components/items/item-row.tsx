@@ -14,19 +14,22 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2, MoveHorizontal } from 'lucide-react'
 import { OptimisticItem } from './item-list'
 import { ItemForm } from './item-form'
+import { MoveItemDialog } from './move-item-dialog'
 
 interface ItemRowProps {
   item: OptimisticItem
   onDelete: (item: OptimisticItem) => void
+  onMove?: () => void
 }
 
-export function ItemRow({ item, onDelete }: ItemRowProps) {
+export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showMoveDialog, setShowMoveDialog] = useState(false)
 
   async function handleDelete() {
     try {
@@ -94,8 +97,18 @@ export function ItemRow({ item, onDelete }: ItemRowProps) {
             <Button
               variant="ghost"
               size="icon"
+              onClick={() => setShowMoveDialog(true)}
+              disabled={item.optimistic}
+              title="물품 이동"
+            >
+              <MoveHorizontal className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setIsEditing(true)}
               disabled={item.optimistic}
+              title="물품 수정"
             >
               <Pencil className="h-4 w-4" />
             </Button>
@@ -104,6 +117,7 @@ export function ItemRow({ item, onDelete }: ItemRowProps) {
               size="icon"
               onClick={() => setShowDeleteDialog(true)}
               disabled={item.optimistic}
+              title="물품 삭제"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -135,6 +149,19 @@ export function ItemRow({ item, onDelete }: ItemRowProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <MoveItemDialog
+        open={showMoveDialog}
+        onOpenChange={setShowMoveDialog}
+        itemId={item.id}
+        itemName={item.name}
+        currentContainerId={item.container_id}
+        onSuccess={() => {
+          if (onMove) {
+            onMove()
+          }
+        }}
+      />
     </>
   )
 }
