@@ -77,13 +77,17 @@ export function ItemList({ containerId, items: initialItems }: ItemListProps) {
   }, [debouncedSearchQuery, dateFrom, dateTo, router])
 
   async function handleAddItem(item: OptimisticItem) {
-    setOptimisticItems({ type: 'add', item })
-    router.refresh()
+    startTransition(() => {
+      setOptimisticItems({ type: 'add', item })
+      router.refresh()
+    })
   }
 
   async function handleDeleteItem(item: OptimisticItem) {
-    setOptimisticItems({ type: 'delete', item })
-    router.refresh()
+    startTransition(() => {
+      setOptimisticItems({ type: 'delete', item })
+      router.refresh()
+    })
   }
 
   function handleClearFilters() {

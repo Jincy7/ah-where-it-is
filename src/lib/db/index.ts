@@ -35,10 +35,12 @@ export {
   createItem,
   updateItem,
   deleteItem,
+  searchAllItems,
   type Item,
   type ItemInsert,
   type ItemUpdate,
   type ItemFilterOptions,
+  type ItemWithContainer,
 } from './items'
 
 // Storage

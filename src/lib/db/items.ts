@@ -6,6 +6,14 @@ export type ItemInsert = TablesInsert<'items'>
 export type ItemUpdate = TablesUpdate<'items'>
 
 /**
+ * Extended Item type that includes container information
+ */
+export interface ItemWithContainer extends Item {
+  container_name: string
+  container_id: string
+}
+
+/**
  * Filter options for querying items
  */
 export interface ItemFilterOptions {
@@ -256,6 +264,65 @@ export async function deleteItem(id: string): Promise<void> {
     }
   } catch (error) {
     console.error('Error in deleteItem:', error)
+    throw error
+  }
+}
+
+/**
+ * Search for items across all containers owned by the current user.
+ * Searches in item name and description using case-insensitive matching.
+ *
+ * @param searchQuery - The search term to match against item name and description
+ * @returns Array of items with container information, ordered by most recently created
+ * @throws Error if database query fails
+ *
+ * @example
+ * ```ts
+ * // Search for items containing "winter" in name or description
+ * const results = await searchAllItems('winter')
+ * // Returns items with container_name included
+ * ```
+ */
+export async function searchAllItems(
+  searchQuery: string
+): Promise<ItemWithContainer[]> {
+  try {
+    const supabase = await createClient()
+
+    // Build query with JOIN to containers table to get container name
+    const searchPattern = `%${searchQuery.trim()}%`
+
+    const { data, error } = await supabase
+      .from('items')
+      .select(`
+        *,
+        container:containers!inner(
+          id,
+          name
+        )
+      `)
+      .or(`name.ilike.${searchPattern},description.ilike.${searchPattern}`)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      throw new Error(`Failed to search items: ${error.message}`)
+    }
+
+    // Transform the data to match ItemWithContainer interface
+    const itemsWithContainer: ItemWithContainer[] = (data || []).map((item) => {
+      // Extract container data and remove it from the item object
+      const { container, ...itemData } = item
+
+      return {
+        ...itemData,
+        container_id: container.id,
+        container_name: container.name,
+      } as ItemWithContainer
+    })
+
+    return itemsWithContainer
+  } catch (error) {
+    console.error('Error in searchAllItems:', error)
     throw error
   }
 }

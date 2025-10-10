@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Menu, Home, Settings } from 'lucide-react'
+import { Menu, Home, Settings, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -15,6 +15,7 @@ import {
 // Icon mapping
 const iconMap = {
   home: Home,
+  search: Search,
   settings: Settings,
 } as const
 
