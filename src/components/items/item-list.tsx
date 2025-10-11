@@ -15,7 +15,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ItemForm } from './item-form'
 import { ItemRow } from './item-row'
 import { ItemFilters } from './item-filters'
-import { PackageOpen, Loader2, SearchX } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 interface ItemListProps {
   containerId: string

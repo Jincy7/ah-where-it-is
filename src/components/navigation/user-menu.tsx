@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { LogOut, Settings, User } from 'lucide-react'
+import { LogOut, Settings } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -39,7 +39,7 @@ export function UserMenu({ userEmail }: UserMenuProps) {
       toast.success('로그아웃되었습니다')
       router.push('/login')
       router.refresh()
-    } catch (error) {
+    } catch {
       toast.error('로그아웃 중 오류가 발생했습니다')
       setIsLoggingOut(false)
     }

@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createContainer, uploadContainerImage, getContainers } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient()
     const {

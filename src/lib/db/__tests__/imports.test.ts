@@ -6,6 +6,8 @@
  * Run `npx tsc --noEmit` to verify all imports are valid.
  */
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 // Test: Import all database operations
 import {
   // Locations

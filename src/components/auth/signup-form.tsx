@@ -73,7 +73,7 @@ export function SignupForm() {
           router.push('/login')
         }
       }
-    } catch (error) {
+    } catch {
       toast.error('회원가입 중 오류가 발생했습니다')
       setLoading(false)
     }

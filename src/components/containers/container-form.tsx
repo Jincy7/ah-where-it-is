@@ -7,7 +7,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -26,7 +25,7 @@ import {
 } from '@/components/ui/form'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { Loader2, Upload, X, Image as ImageIcon } from 'lucide-react'
+import { Loader2, X, Image as ImageIcon } from 'lucide-react'
 import Image from 'next/image'
 import type { Container, Location } from '@/lib/db'
 
@@ -117,7 +116,7 @@ export function ContainerForm({
         throw new Error(error.error || '보관함 저장에 실패했습니다')
       }
 
-      const data = await response.json()
+      await response.json()
 
       toast.success(
         mode === 'create'
@@ -220,6 +219,7 @@ export function ContainerForm({
             <FormField
               control={form.control}
               name="photo"
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
               render={({ field: { value, onChange, ...field } }) => (
                 <FormItem>
                   <FormLabel>사진 업로드</FormLabel>

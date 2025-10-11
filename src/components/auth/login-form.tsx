@@ -46,7 +46,7 @@ export function LoginForm() {
         router.push(redirectTo)
         router.refresh()
       }
-    } catch (error) {
+    } catch {
       toast.error('로그인 중 오류가 발생했습니다')
       setLoading(false)
     }
