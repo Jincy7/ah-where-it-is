@@ -29,10 +29,10 @@ export default async function LoginPage() {
           <div className="flex justify-center">
             <Image
               priority
-              src="/agu-welcome.svg"
+              src="/agu-welcome.png"
               alt="환영합니다"
-              width={200}
-              height={200}
+              width={400}
+              height={400}
               className="h-48 w-48"
             />
           </div>

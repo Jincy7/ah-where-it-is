@@ -7,10 +7,10 @@ export default function OfflinePage() {
       <div className="w-full max-w-md space-y-8 text-center">
         <div className="flex justify-center">
           <Image
-            src="/agu-error.svg"
+            src="/agu-error.png"
             alt="오프라인"
-            width={200}
-            height={200}
+            width={400}
+            height={400}
             className="h-48 w-48"
           />
         </div>

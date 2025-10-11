@@ -16,10 +16,10 @@ export function ContainerList({ containers }: ContainerListProps) {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
         <Image
-          src="/agu-container.svg"
+          src="/agu-container.png"
           alt="보관함이 없습니다"
-          width={160}
-          height={160}
+          width={320}
+          height={320}
           className="h-40 w-40"
         />
         <h3 className="mt-4 text-lg font-semibold">보관함이 없습니다</h3>

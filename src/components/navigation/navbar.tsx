@@ -31,10 +31,10 @@ export async function Navbar() {
         <div className="flex items-center gap-6 px-4">
           <Link href="/" className="flex items-center space-x-2">
             <Image
-              src="/agu-logo-2.svg"
+              src="/agu-logo.png"
               alt="아 그거 어딨지"
-              width={40}
-              height={40}
+              width={80}
+              height={80}
               className="h-10 w-10"
             />
             <span className="text-xl font-bold">아 그거 어딨지</span>

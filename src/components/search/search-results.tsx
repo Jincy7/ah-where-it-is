@@ -104,10 +104,10 @@ export function SearchResults({ initialQuery, initialItems }: SearchResultsProps
       {!hasQuery ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <Image
-            src="/agu-search.svg"
+            src="/agu-search.png"
             alt="검색어를 입력하세요"
-            width={160}
-            height={160}
+            width={320}
+            height={320}
             className="h-40 w-40"
           />
           <h3 className="mt-4 text-lg font-semibold">검색어를 입력하세요</h3>
@@ -118,10 +118,10 @@ export function SearchResults({ initialQuery, initialItems }: SearchResultsProps
       ) : !hasResults ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
           <Image
-            src="/agu-search.svg"
+            src="/agu-search.png"
             alt="검색 결과가 없습니다"
-            width={160}
-            height={160}
+            width={320}
+            height={320}
             className="h-40 w-40"
           />
           <h3 className="mt-4 text-lg font-semibold">검색 결과가 없습니다</h3>
