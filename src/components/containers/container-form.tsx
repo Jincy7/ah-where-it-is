@@ -25,9 +25,10 @@ import {
 } from '@/components/ui/form'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
-import { Loader2, X, Image as ImageIcon } from 'lucide-react'
+import { Loader2, X, Image as ImageIcon, Plus } from 'lucide-react'
 import Image from 'next/image'
 import type { Container, Location } from '@/lib/db'
+import { AddLocationDialog } from '@/components/locations/add-location-dialog'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -57,7 +58,7 @@ export function ContainerForm({
   mode,
   defaultValues,
   containerId,
-  locations,
+  locations: initialLocations,
 }: ContainerFormProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -65,6 +66,8 @@ export function ContainerForm({
     defaultValues?.internal_photo_url || null
   )
   const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false)
+  const [locations, setLocations] = useState<Location[]>(initialLocations)
+  const [isAddLocationDialogOpen, setIsAddLocationDialogOpen] = useState(false)
 
   const form = useForm<ContainerFormValues>({
     resolver: zodResolver(containerSchema),
@@ -148,6 +151,13 @@ export function ContainerForm({
     setPreviewUrl(null)
   }
 
+  function handleLocationAdded(newLocation: Location) {
+    // Add new location to the list
+    setLocations((prev) => [...prev, newLocation].sort((a, b) => a.name.localeCompare(b.name)))
+    // Auto-select the newly added location
+    form.setValue('location_id', newLocation.id)
+  }
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -182,24 +192,36 @@ export function ContainerForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>위치</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                    disabled={isSubmitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="위치를 선택하세요 (선택사항)" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {locations.map((location) => (
-                        <SelectItem key={location.id} value={location.id}>
-                          {location.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex gap-2">
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      disabled={isSubmitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="위치를 선택하세요 (선택사항)" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {locations.map((location) => (
+                          <SelectItem key={location.id} value={location.id}>
+                            {location.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setIsAddLocationDialogOpen(true)}
+                      disabled={isSubmitting}
+                      title="새 위치 추가"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
                   <FormDescription>
                     보관함이 위치한 장소를 선택하세요
                   </FormDescription>
@@ -303,6 +325,13 @@ export function ContainerForm({
           </Button>
         </div>
       </form>
+
+      {/* Add Location Dialog */}
+      <AddLocationDialog
+        open={isAddLocationDialogOpen}
+        onOpenChange={setIsAddLocationDialogOpen}
+        onLocationAdded={handleLocationAdded}
+      />
     </Form>
   )
 }

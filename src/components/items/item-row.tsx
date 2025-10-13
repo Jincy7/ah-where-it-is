@@ -13,8 +13,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
-import { Pencil, Trash2, MoveHorizontal } from 'lucide-react'
+import { Pencil, Trash2, MoveHorizontal, MoreVertical } from 'lucide-react'
 import { OptimisticItem } from './item-list'
 import { ItemForm } from './item-form'
 import { MoveItemDialog } from './move-item-dialog'
@@ -30,6 +36,7 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showMoveDialog, setShowMoveDialog] = useState(false)
+  const [showDescription, setShowDescription] = useState(false)
 
   async function handleDelete() {
     try {
@@ -83,7 +90,26 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
   return (
     <>
       <TableRow className={item.optimistic ? 'opacity-60' : ''}>
-        <TableCell className="font-medium">{item.name}</TableCell>
+        <TableCell className="font-medium">
+          <div className="space-y-1">
+            <div>{item.name}</div>
+            {/* Mobile: Show description inline with expand/collapse */}
+            {item.description && (
+              <div className="sm:hidden">
+                <button
+                  onClick={() => setShowDescription(!showDescription)}
+                  className="text-left text-sm text-muted-foreground hover:text-foreground"
+                >
+                  {showDescription ? (
+                    <span>{item.description}</span>
+                  ) : (
+                    <span className="line-clamp-1">{item.description}</span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </TableCell>
         <TableCell className="hidden sm:table-cell">
           {item.description || (
             <span className="text-muted-foreground">-</span>
@@ -93,7 +119,8 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
           {formatDate(item.created_at)}
         </TableCell>
         <TableCell className="text-right">
-          <div className="flex justify-end gap-2">
+          {/* Desktop: Show all buttons */}
+          <div className="hidden justify-end gap-2 md:flex">
             <Button
               variant="ghost"
               size="icon"
@@ -121,6 +148,39 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
             >
               <Trash2 className="h-4 w-4" />
             </Button>
+          </div>
+
+          {/* Mobile: Show dropdown menu */}
+          <div className="flex justify-end md:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={item.optimistic}
+                  title="작업 메뉴"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShowMoveDialog(true)}>
+                  <MoveHorizontal className="mr-2 h-4 w-4" />
+                  이동
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  수정
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  삭제
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </TableCell>
       </TableRow>

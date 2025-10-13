@@ -1,13 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { getContainer, getItems } from '@/lib/db'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import Link from 'next/link'
-import Image from 'next/image'
-import { Pencil, Package, MapPin } from 'lucide-react'
-import { DeleteButton } from '@/components/containers/delete-button'
-import { QrCodeButton } from '@/components/containers/qr-code-button'
-import { ItemList } from '@/components/items/item-list'
+import { Package, MapPin } from 'lucide-react'
+import { ContainerActionsMenu } from '@/components/containers/container-actions-menu'
+import { ContainerImage } from '@/components/containers/image-modal'
+import { ContainerTabs } from '@/components/containers/container-tabs'
 import { notFound, redirect } from 'next/navigation'
 
 export default async function ContainerDetailPage({
@@ -68,46 +65,29 @@ export default async function ContainerDetailPage({
             </Badge>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href={`/container/${container.id}/edit`}>
-              <Pencil className="mr-2 h-4 w-4" />
-              수정
-            </Link>
-          </Button>
-          <DeleteButton
-            containerId={container.id}
-            containerName={container.name}
-          />
-          <QrCodeButton
-            containerId={container.id}
-            containerName={container.name}
-          />
-        </div>
+        <ContainerActionsMenu
+          containerId={container.id}
+          containerName={container.name}
+        />
       </div>
 
       {/* Container Photo */}
       {container.internal_photo_url && (
-        <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted">
-          <Image
-            src={container.internal_photo_url}
-            alt={container.name}
-            fill
-            className="object-cover"
-            priority
-          />
-        </div>
+        <ContainerImage
+          src={container.internal_photo_url}
+          alt={container.name}
+        />
       )}
 
-      {/* Items Section */}
+      {/* Items Section with Tabs */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">물품 목록</h2>
+          <h2 className="text-2xl font-semibold">물품 관리</h2>
           <p className="text-sm text-muted-foreground">
             총 {items.length}개
           </p>
         </div>
-        <ItemList containerId={container.id} items={items} />
+        <ContainerTabs containerId={container.id} items={items} />
       </div>
     </div>
   )

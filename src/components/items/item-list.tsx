@@ -12,13 +12,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
-import { ItemForm } from './item-form'
 import { ItemRow } from './item-row'
 import { ItemFilters } from './item-filters'
 import { Loader2 } from 'lucide-react'
 
 interface ItemListProps {
-  containerId: string
   items: Item[]
 }
 
@@ -26,15 +24,13 @@ export type OptimisticItem = Item & { optimistic?: boolean; deleted?: boolean }
 
 type OptimisticAction = { type: 'add' | 'delete'; item: OptimisticItem }
 
-export function ItemList({ containerId, items: initialItems }: ItemListProps) {
+export function ItemList({ items: initialItems }: ItemListProps) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [items, setOptimisticItems] = useOptimistic<OptimisticItem[], OptimisticAction>(
     initialItems,
     (state, action) => {
-      if (action.type === 'add') {
-        return [action.item, ...state]
-      } else if (action.type === 'delete') {
+      if (action.type === 'delete') {
         return state.map((item) =>
           item.id === action.item.id ? { ...item, deleted: true } : item
         )
@@ -77,13 +73,6 @@ export function ItemList({ containerId, items: initialItems }: ItemListProps) {
     })
   }, [debouncedSearchQuery, dateFrom, dateTo, router])
 
-  async function handleAddItem(item: OptimisticItem) {
-    startTransition(() => {
-      setOptimisticItems({ type: 'add', item })
-      router.refresh()
-    })
-  }
-
   async function handleDeleteItem(item: OptimisticItem) {
     startTransition(() => {
       setOptimisticItems({ type: 'delete', item })
@@ -114,16 +103,6 @@ export function ItemList({ containerId, items: initialItems }: ItemListProps) {
 
   return (
     <div className="space-y-6">
-      {/* Add Item Form */}
-      <Card>
-        <CardContent className="pt-6">
-          <ItemForm
-            containerId={containerId}
-            onSuccess={handleAddItem}
-          />
-        </CardContent>
-      </Card>
-
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
@@ -182,7 +161,7 @@ export function ItemList({ containerId, items: initialItems }: ItemListProps) {
           <p className="mb-4 mt-2 text-sm text-muted-foreground">
             {hasNoResults
               ? '다른 검색어나 필터 조건을 시도해보세요.'
-              : '위의 폼을 사용해서 첫 번째 물품을 추가해보세요.'}
+              : '물품 등록 탭에서 물품을 추가해보세요.'}
           </p>
         </div>
       ) : (

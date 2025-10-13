@@ -370,6 +370,55 @@ export async function getAllContainersForMove(): Promise<ContainerSummary[]> {
 }
 
 /**
+ * Create multiple items in a single operation.
+ *
+ * @param items - Array of item data to insert
+ * @returns Array of created items
+ * @throws Error if database insert fails
+ *
+ * @example
+ * ```ts
+ * const newItems = await createBulkItems([
+ *   {
+ *     container_id: containerId,
+ *     name: 'Winter Jacket',
+ *     description: 'Black north face jacket, size M'
+ *   },
+ *   {
+ *     container_id: containerId,
+ *     name: 'Ski Boots',
+ *     description: 'Size 42, black'
+ *   }
+ * ])
+ * ```
+ */
+export async function createBulkItems(
+  items: Omit<ItemInsert, 'id' | 'created_at' | 'updated_at'>[]
+): Promise<Item[]> {
+  try {
+    const supabase = await createClient()
+
+    const { data: newItems, error } = await supabase
+      .from('items')
+      .insert(items)
+      .select()
+
+    if (error) {
+      throw new Error(`Failed to create items: ${error.message}`)
+    }
+
+    if (!newItems) {
+      throw new Error('Failed to create items: No data returned')
+    }
+
+    return newItems
+  } catch (error) {
+    console.error('Error in createBulkItems:', error)
+    throw error
+  }
+}
+
+/**
  * Move an item to a different container.
  * Validates that both the item and target container exist and belong to the current user.
  *
