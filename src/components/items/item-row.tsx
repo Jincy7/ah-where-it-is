@@ -13,8 +13,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
-import { Pencil, Trash2, MoveHorizontal } from 'lucide-react'
+import { Pencil, Trash2, MoveHorizontal, MoreVertical, Package } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { OptimisticItem } from './item-list'
 import { ItemForm } from './item-form'
 import { MoveItemDialog } from './move-item-dialog'
@@ -22,14 +29,17 @@ import { MoveItemDialog } from './move-item-dialog'
 interface ItemRowProps {
   item: OptimisticItem
   onDelete: (item: OptimisticItem) => void
+  onUpdate?: (updatedItem: OptimisticItem) => void
   onMove?: () => void
 }
 
-export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
+export function ItemRow({ item, onDelete, onUpdate, onMove }: ItemRowProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showMoveDialog, setShowMoveDialog] = useState(false)
+  const [showDescription, setShowDescription] = useState(false)
+  const [currentItem, setCurrentItem] = useState<OptimisticItem>(item)
 
   async function handleDelete() {
     try {
@@ -63,16 +73,24 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
     })
   }
 
+  function handleUpdate(updatedItem: OptimisticItem) {
+    setCurrentItem(updatedItem)
+    setIsEditing(false)
+    if (onUpdate) {
+      onUpdate(updatedItem)
+    }
+  }
+
   if (isEditing) {
     return (
       <TableRow>
-        <TableCell colSpan={4} className="p-4">
+        <TableCell colSpan={5} className="p-4">
           <ItemForm
-            containerId={item.container_id}
-            defaultValues={item}
-            itemId={item.id}
+            containerId={currentItem.container_id}
+            defaultValues={currentItem}
+            itemId={currentItem.id}
             mode="edit"
-            onSuccess={() => setIsEditing(false)}
+            onSuccess={handleUpdate}
             onCancel={() => setIsEditing(false)}
           />
         </TableCell>
@@ -82,18 +100,50 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
 
   return (
     <>
-      <TableRow className={item.optimistic ? 'opacity-60' : ''}>
-        <TableCell className="font-medium">{item.name}</TableCell>
+      <TableRow className={currentItem.optimistic ? 'opacity-60' : ''}>
+        <TableCell className="font-medium">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span>{currentItem.name}</span>
+              <Badge variant="secondary" className="gap-1">
+                <Package className="h-3 w-3" />
+                {currentItem.quantity}
+              </Badge>
+            </div>
+            {/* Mobile: Show description inline with expand/collapse */}
+            {currentItem.description && (
+              <div className="sm:hidden">
+                <button
+                  onClick={() => setShowDescription(!showDescription)}
+                  className="text-left text-sm text-muted-foreground hover:text-foreground"
+                >
+                  {showDescription ? (
+                    <span>{currentItem.description}</span>
+                  ) : (
+                    <span className="line-clamp-1">{currentItem.description}</span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </TableCell>
         <TableCell className="hidden sm:table-cell">
-          {item.description || (
+          <Badge variant="outline" className="gap-1">
+            <Package className="h-3 w-3" />
+            {currentItem.quantity}개
+          </Badge>
+        </TableCell>
+        <TableCell className="hidden sm:table-cell">
+          {currentItem.description || (
             <span className="text-muted-foreground">-</span>
           )}
         </TableCell>
         <TableCell className="hidden text-muted-foreground md:table-cell">
-          {formatDate(item.created_at)}
+          {formatDate(currentItem.created_at)}
         </TableCell>
         <TableCell className="text-right">
-          <div className="flex justify-end gap-2">
+          {/* Desktop: Show all buttons */}
+          <div className="hidden justify-end gap-2 md:flex">
             <Button
               variant="ghost"
               size="icon"
@@ -116,11 +166,44 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
               variant="ghost"
               size="icon"
               onClick={() => setShowDeleteDialog(true)}
-              disabled={item.optimistic}
+              disabled={currentItem.optimistic}
               title="물품 삭제"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
+          </div>
+
+          {/* Mobile: Show dropdown menu */}
+          <div className="flex justify-end md:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={currentItem.optimistic}
+                  title="작업 메뉴"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setShowMoveDialog(true)}>
+                  <MoveHorizontal className="mr-2 h-4 w-4" />
+                  이동
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  수정
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  삭제
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </TableCell>
       </TableRow>
@@ -130,7 +213,7 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>물품을 삭제하시겠습니까?</AlertDialogTitle>
             <AlertDialogDescription>
-              <span className="font-semibold">{item.name}</span> 물품이 삭제됩니다.
+              <span className="font-semibold">{currentItem.name}</span> 물품이 삭제됩니다.
               이 작업은 되돌릴 수 없습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -153,9 +236,9 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
       <MoveItemDialog
         open={showMoveDialog}
         onOpenChange={setShowMoveDialog}
-        itemId={item.id}
-        itemName={item.name}
-        currentContainerId={item.container_id}
+        itemId={currentItem.id}
+        itemName={currentItem.name}
+        currentContainerId={currentItem.container_id}
         onSuccess={() => {
           if (onMove) {
             onMove()

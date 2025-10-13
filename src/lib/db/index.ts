@@ -33,6 +33,7 @@ export {
   getItems,
   getItem,
   createItem,
+  createBulkItems,
   updateItem,
   deleteItem,
   searchAllItems,

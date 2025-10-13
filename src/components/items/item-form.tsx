@@ -21,6 +21,7 @@ import { OptimisticItem } from './item-list'
 
 const itemSchema = z.object({
   name: z.string().min(1, '물품명을 입력해주세요'),
+  quantity: z.coerce.number().min(1, '수량은 1개 이상이어야 합니다'),
   description: z.string().optional(),
 })
 
@@ -49,6 +50,7 @@ export function ItemForm({
     resolver: zodResolver(itemSchema),
     defaultValues: {
       name: defaultValues?.name || '',
+      quantity: defaultValues?.quantity || 1,
       description: defaultValues?.description || '',
     },
   })
@@ -110,7 +112,7 @@ export function ItemForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <FormField
             control={form.control}
             name="name"
@@ -120,6 +122,26 @@ export function ItemForm({
                 <FormControl>
                   <Input
                     placeholder="예: 겨울 코트"
+                    {...field}
+                    disabled={isSubmitting}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="quantity"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>수량 *</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="1"
                     {...field}
                     disabled={isSubmitting}
                   />

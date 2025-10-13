@@ -30,7 +30,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { name, description } = body
+    const { name, quantity, description } = body
 
     if (!name) {
       return NextResponse.json(
@@ -39,9 +39,17 @@ export async function PATCH(
       )
     }
 
+    if (quantity !== undefined && quantity < 1) {
+      return NextResponse.json(
+        { error: 'Quantity must be at least 1' },
+        { status: 400 }
+      )
+    }
+
     // Update item
     const updatedItem = await updateItem(id, {
       name,
+      quantity,
       description: description || null,
     })
 

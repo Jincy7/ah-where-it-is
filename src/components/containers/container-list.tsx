@@ -2,10 +2,7 @@
 
 import Image from 'next/image'
 import { ContainerWithDetails } from '@/lib/db'
-import { ContainerCard } from './container-card'
-import { Button } from '@/components/ui/button'
-import Link from 'next/link'
-import { PackagePlus } from 'lucide-react'
+import { ContainerListItem } from './container-list-item'
 
 interface ContainerListProps {
   containers: ContainerWithDetails[]
@@ -26,20 +23,14 @@ export function ContainerList({ containers }: ContainerListProps) {
         <p className="mb-4 mt-2 text-sm text-muted-foreground">
           첫 번째 보관함을 만들어서 물품을 정리해보세요.
         </p>
-        <Button asChild>
-          <Link href="/container/new">
-            <PackagePlus className="mr-2 h-4 w-4" />
-            새 보관함 만들기
-          </Link>
-        </Button>
       </div>
     )
   }
 
   return (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="space-y-2">
       {containers.map((container) => (
-        <ContainerCard key={container.id} container={container} />
+        <ContainerListItem key={container.id} container={container} />
       ))}
     </div>
   )

@@ -1,25 +1,29 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Calendar } from '@/components/ui/calendar'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
-import { CalendarIcon, Search, X, ChevronDown, ChevronUp } from 'lucide-react'
-import { format } from 'date-fns'
-import { ko } from 'date-fns/locale'
+import { useState } from "react";
+import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { CalendarIcon, Search, X, ChevronDown, ChevronUp } from "lucide-react";
+import { format } from "date-fns";
+import { ko } from "date-fns/locale";
 
 export interface ItemFiltersProps {
-  searchQuery: string
-  dateFrom: Date | undefined
-  dateTo: Date | undefined
-  onSearchChange: (value: string) => void
-  onDateFromChange: (date: Date | undefined) => void
-  onDateToChange: (date: Date | undefined) => void
-  onClearFilters: () => void
-  activeFilterCount: number
+  searchQuery: string;
+  dateFrom: Date | undefined;
+  dateTo: Date | undefined;
+  onSearchChange: (value: string) => void;
+  onDateFromChange: (date: Date | undefined) => void;
+  onDateToChange: (date: Date | undefined) => void;
+  onClearFilters: () => void;
+  activeFilterCount: number;
 }
 
 export function ItemFilters({
@@ -32,7 +36,7 @@ export function ItemFilters({
   onClearFilters,
   activeFilterCount,
 }: ItemFiltersProps) {
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(true);
 
   return (
     <div className="space-y-4">
@@ -63,8 +67,8 @@ export function ItemFilters({
       {/* Filters content */}
       <div
         className={cn(
-          'space-y-4 lg:space-y-0 lg:flex lg:items-center lg:gap-4',
-          !isExpanded && 'hidden lg:flex'
+          "space-y-4 lg:space-y-0 lg:flex lg:items-center lg:gap-4",
+          !isExpanded && "hidden lg:flex"
         )}
       >
         {/* Search Input */}
@@ -81,7 +85,7 @@ export function ItemFilters({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => onSearchChange('')}
+              onClick={() => onSearchChange("")}
               className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
             >
               <X className="h-3 w-3" />
@@ -95,13 +99,13 @@ export function ItemFilters({
             <Button
               variant="outline"
               className={cn(
-                'w-full justify-start text-left font-normal lg:w-[200px]',
-                !dateFrom && 'text-muted-foreground'
+                "w-full justify-start text-left font-normal lg:w-[200px]",
+                !dateFrom && "text-muted-foreground"
               )}
             >
               <CalendarIcon className="mr-2 h-4 w-4" />
               {dateFrom ? (
-                format(dateFrom, 'PPP', { locale: ko })
+                format(dateFrom, "PPP", { locale: ko })
               ) : (
                 <span>시작일</span>
               )}
@@ -116,10 +120,10 @@ export function ItemFilters({
               disabled={(date) => {
                 // Disable dates after dateTo if dateTo is set
                 if (dateTo) {
-                  return date > dateTo
+                  return date > dateTo;
                 }
                 // Disable future dates
-                return date > new Date()
+                return date > new Date();
               }}
             />
           </PopoverContent>
@@ -131,13 +135,13 @@ export function ItemFilters({
             <Button
               variant="outline"
               className={cn(
-                'w-full justify-start text-left font-normal lg:w-[200px]',
-                !dateTo && 'text-muted-foreground'
+                "w-full justify-start text-left font-normal lg:w-[200px]",
+                !dateTo && "text-muted-foreground"
               )}
             >
               <CalendarIcon className="mr-2 h-4 w-4" />
               {dateTo ? (
-                format(dateTo, 'PPP', { locale: ko })
+                format(dateTo, "PPP", { locale: ko })
               ) : (
                 <span>종료일</span>
               )}
@@ -152,10 +156,10 @@ export function ItemFilters({
               disabled={(date) => {
                 // Disable dates before dateFrom if dateFrom is set
                 if (dateFrom) {
-                  return date < dateFrom
+                  return date < dateFrom;
                 }
                 // Disable future dates
-                return date > new Date()
+                return date > new Date();
               }}
             />
           </PopoverContent>
@@ -177,5 +181,5 @@ export function ItemFilters({
         )}
       </div>
     </div>
-  )
+  );
 }
