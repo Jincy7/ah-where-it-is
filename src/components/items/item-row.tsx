@@ -29,15 +29,17 @@ import { MoveItemDialog } from './move-item-dialog'
 interface ItemRowProps {
   item: OptimisticItem
   onDelete: (item: OptimisticItem) => void
+  onUpdate?: (updatedItem: OptimisticItem) => void
   onMove?: () => void
 }
 
-export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
+export function ItemRow({ item, onDelete, onUpdate, onMove }: ItemRowProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showMoveDialog, setShowMoveDialog] = useState(false)
   const [showDescription, setShowDescription] = useState(false)
+  const [currentItem, setCurrentItem] = useState<OptimisticItem>(item)
 
   async function handleDelete() {
     try {
@@ -71,16 +73,24 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
     })
   }
 
+  function handleUpdate(updatedItem: OptimisticItem) {
+    setCurrentItem(updatedItem)
+    setIsEditing(false)
+    if (onUpdate) {
+      onUpdate(updatedItem)
+    }
+  }
+
   if (isEditing) {
     return (
       <TableRow>
         <TableCell colSpan={5} className="p-4">
           <ItemForm
-            containerId={item.container_id}
-            defaultValues={item}
-            itemId={item.id}
+            containerId={currentItem.container_id}
+            defaultValues={currentItem}
+            itemId={currentItem.id}
             mode="edit"
-            onSuccess={() => setIsEditing(false)}
+            onSuccess={handleUpdate}
             onCancel={() => setIsEditing(false)}
           />
         </TableCell>
@@ -90,27 +100,27 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
 
   return (
     <>
-      <TableRow className={item.optimistic ? 'opacity-60' : ''}>
+      <TableRow className={currentItem.optimistic ? 'opacity-60' : ''}>
         <TableCell className="font-medium">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span>{item.name}</span>
+              <span>{currentItem.name}</span>
               <Badge variant="secondary" className="gap-1">
                 <Package className="h-3 w-3" />
-                {item.quantity}
+                {currentItem.quantity}
               </Badge>
             </div>
             {/* Mobile: Show description inline with expand/collapse */}
-            {item.description && (
+            {currentItem.description && (
               <div className="sm:hidden">
                 <button
                   onClick={() => setShowDescription(!showDescription)}
                   className="text-left text-sm text-muted-foreground hover:text-foreground"
                 >
                   {showDescription ? (
-                    <span>{item.description}</span>
+                    <span>{currentItem.description}</span>
                   ) : (
-                    <span className="line-clamp-1">{item.description}</span>
+                    <span className="line-clamp-1">{currentItem.description}</span>
                   )}
                 </button>
               </div>
@@ -120,16 +130,16 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
         <TableCell className="hidden sm:table-cell">
           <Badge variant="outline" className="gap-1">
             <Package className="h-3 w-3" />
-            {item.quantity}개
+            {currentItem.quantity}개
           </Badge>
         </TableCell>
         <TableCell className="hidden sm:table-cell">
-          {item.description || (
+          {currentItem.description || (
             <span className="text-muted-foreground">-</span>
           )}
         </TableCell>
         <TableCell className="hidden text-muted-foreground md:table-cell">
-          {formatDate(item.created_at)}
+          {formatDate(currentItem.created_at)}
         </TableCell>
         <TableCell className="text-right">
           {/* Desktop: Show all buttons */}
@@ -156,7 +166,7 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
               variant="ghost"
               size="icon"
               onClick={() => setShowDeleteDialog(true)}
-              disabled={item.optimistic}
+              disabled={currentItem.optimistic}
               title="물품 삭제"
             >
               <Trash2 className="h-4 w-4" />
@@ -170,7 +180,7 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  disabled={item.optimistic}
+                  disabled={currentItem.optimistic}
                   title="작업 메뉴"
                 >
                   <MoreVertical className="h-4 w-4" />
@@ -203,7 +213,7 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>물품을 삭제하시겠습니까?</AlertDialogTitle>
             <AlertDialogDescription>
-              <span className="font-semibold">{item.name}</span> 물품이 삭제됩니다.
+              <span className="font-semibold">{currentItem.name}</span> 물품이 삭제됩니다.
               이 작업은 되돌릴 수 없습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -226,9 +236,9 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
       <MoveItemDialog
         open={showMoveDialog}
         onOpenChange={setShowMoveDialog}
-        itemId={item.id}
-        itemName={item.name}
-        currentContainerId={item.container_id}
+        itemId={currentItem.id}
+        itemName={currentItem.name}
+        currentContainerId={currentItem.container_id}
         onSuccess={() => {
           if (onMove) {
             onMove()
