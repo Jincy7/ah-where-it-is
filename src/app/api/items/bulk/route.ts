@@ -64,17 +64,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Expand items based on quantity
-    const expandedItems = items.flatMap((item) => {
-      return Array.from({ length: item.quantity }, () => ({
-        container_id,
-        name: item.name,
-        description: item.description || null,
-      }))
-    })
+    // Prepare items with quantity
+    const itemsToCreate = items.map((item) => ({
+      container_id,
+      name: item.name,
+      quantity: item.quantity,
+      description: item.description || null,
+    }))
 
     // Create all items in bulk
-    const createdItems = await createBulkItems(expandedItems)
+    const createdItems = await createBulkItems(itemsToCreate)
 
     return NextResponse.json({
       items: createdItems,

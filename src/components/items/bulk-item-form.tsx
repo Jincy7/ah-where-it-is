@@ -1,11 +1,11 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { useState } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Form,
   FormControl,
@@ -13,268 +13,247 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form'
+} from "@/components/ui/form";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { toast } from 'sonner'
-import { Loader2, Plus, X, Package } from 'lucide-react'
+} from "@/components/ui/card";
+import { toast } from "sonner";
+import { Loader2, Plus, Trash2, Package } from "lucide-react";
+import { Separator } from "../ui/separator";
 
-const itemSchema = z.object({
-  name: z.string().min(1, '물품명을 입력해주세요'),
-  quantity: z.coerce.number().min(1, '수량은 1개 이상이어야 합니다'),
+const itemRowSchema = z.object({
+  name: z.string().min(1, "물품명을 입력해주세요"),
+  quantity: z.coerce.number().min(1, "수량은 1개 이상이어야 합니다"),
   description: z.string().optional(),
-})
+});
 
-type ItemFormValues = z.infer<typeof itemSchema>
+const bulkItemSchema = z.object({
+  items: z.array(itemRowSchema).min(1, "최소 1개 이상의 물품을 입력해주세요"),
+});
 
-interface TemporaryItem extends ItemFormValues {
-  id: string
-}
+type BulkItemFormValues = z.infer<typeof bulkItemSchema>;
 
 interface BulkItemFormProps {
-  containerId: string
-  onSuccess?: () => void
+  containerId: string;
+  onSuccess?: () => void;
 }
 
 export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [temporaryItems, setTemporaryItems] = useState<TemporaryItem[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const form = useForm<ItemFormValues>({
-    resolver: zodResolver(itemSchema),
+  const form = useForm<BulkItemFormValues>({
+    resolver: zodResolver(bulkItemSchema),
     defaultValues: {
-      name: '',
-      quantity: 1,
-      description: '',
+      items: [{ name: "", quantity: 1, description: "" }],
     },
-  })
+  });
 
-  function handleAddToList(values: ItemFormValues) {
-    const newItem: TemporaryItem = {
-      ...values,
-      id: crypto.randomUUID(),
-    }
-    setTemporaryItems((prev) => [...prev, newItem])
-    form.reset()
-    toast.success('목록에 추가되었습니다')
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "items",
+  });
+
+  function handleAddRow() {
+    append({ name: "", quantity: 1, description: "" });
   }
 
-  function handleRemoveItem(id: string) {
-    setTemporaryItems((prev) => prev.filter((item) => item.id !== id))
-  }
-
-  async function handleSubmitAll() {
-    if (temporaryItems.length === 0) {
-      toast.error('추가할 물품이 없습니다')
-      return
-    }
-
+  async function onSubmit(values: BulkItemFormValues) {
     try {
-      setIsSubmitting(true)
+      setIsSubmitting(true);
 
-      const response = await fetch('/api/items/bulk', {
-        method: 'POST',
+      const response = await fetch("/api/items/bulk", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           container_id: containerId,
-          items: temporaryItems.map((item) => ({
-            name: item.name,
-            quantity: item.quantity,
-            description: item.description || undefined,
-          })),
+          items: values.items,
         }),
-      })
+      });
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || '물품 등록에 실패했습니다')
+        const error = await response.json();
+        throw new Error(error.error || "물품 등록에 실패했습니다");
       }
 
-      const data = await response.json()
+      const data = await response.json();
 
-      toast.success(`${data.count}개의 물품이 등록되었습니다`)
-      setTemporaryItems([])
-      form.reset()
+      toast.success(`${data.count}개의 물품이 등록되었습니다`);
+      form.reset();
 
       if (onSuccess) {
-        onSuccess()
+        onSuccess();
       }
     } catch (error) {
-      console.error('Error submitting bulk items:', error)
+      console.error("Error submitting bulk items:", error);
       toast.error(
-        error instanceof Error ? error.message : '물품 등록에 실패했습니다'
-      )
+        error instanceof Error ? error.message : "물품 등록에 실패했습니다"
+      );
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
   }
 
-  const totalQuantity = temporaryItems.reduce(
-    (sum, item) => sum + item.quantity,
-    0
-  )
+  const totalQuantity = fields.reduce((sum, _, index) => {
+    const quantity = form.watch(`items.${index}.quantity`);
+    return sum + (Number(quantity) || 0);
+  }, 0);
 
   return (
-    <div className="space-y-6">
-      {/* Add Item Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle>물품 정보 입력</CardTitle>
-          <CardDescription>
-            물품 정보를 입력하고 목록에 추가하세요
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(handleAddToList)}
-              className="space-y-4"
-            >
-              <div className="grid gap-4 sm:grid-cols-3">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>물품명 *</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="예: 겨울 코트"
-                          {...field}
-                          disabled={isSubmitting}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="quantity"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>수량 *</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          placeholder="1"
-                          {...field}
-                          disabled={isSubmitting}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>설명</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="예: 검정색, M사이즈"
-                          {...field}
-                          disabled={isSubmitting}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+    <Card>
+      <CardHeader>
+        <CardTitle>물품 일괄 등록</CardTitle>
+        <CardDescription>
+          여러 물품을 한번에 입력하고 등록하세요
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Multi-row input */}
+            <div className="space-y-3">
+              {/* Header Row - Desktop Only */}
+              <div className="hidden grid-cols-12 gap-2 font-medium text-sm text-muted-foreground md:grid">
+                <div className="col-span-4">물품명 *</div>
+                <div className="col-span-2">수량 *</div>
+                <div className="col-span-5">설명</div>
+                <div className="col-span-1"></div>
               </div>
 
-              <div className="flex justify-end">
-                <Button type="submit" variant="outline" disabled={isSubmitting}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  목록에 추가
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+              {/* Input Rows */}
+              {fields.map((field, index) => (
+                <div
+                  key={field.id}
+                  className="grid grid-cols-1 gap-3 rounded-lg border p-3 md:grid-cols-12 md:items-start md:gap-2 md:border-0 md:p-0"
+                >
+                  {/* Mobile: 물품명과 수량 한 줄에 */}
+                  <div className="grid grid-cols-3 gap-2 md:col-span-6 md:grid-cols-2 md:gap-2">
+                    <div className="col-span-2 md:col-span-1">
+                      <FormField
+                        control={form.control}
+                        name={`items.${index}.name`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="md:hidden">
+                              물품명 *
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="예: 겨울 코트"
+                                {...field}
+                                disabled={isSubmitting}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-      {/* Temporary Items List */}
-      {temporaryItems.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>등록 대기 목록</CardTitle>
-                <CardDescription>
-                  {temporaryItems.length}개 항목, 총 {totalQuantity}개 물품
-                </CardDescription>
-              </div>
+                    <div className="col-span-1 md:col-span-1">
+                      <FormField
+                        control={form.control}
+                        name={`items.${index}.quantity`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="md:hidden">수량 *</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={1}
+                                placeholder="1"
+                                {...field}
+                                disabled={isSubmitting}
+                                className="text-center"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-5">
+                    <FormField
+                      control={form.control}
+                      name={`items.${index}.description`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="md:hidden">설명</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="예: 검정색, M사이즈"
+                              {...field}
+                              disabled={isSubmitting}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="flex justify-end md:col-span-1 md:justify-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => remove(index)}
+                      disabled={isSubmitting || fields.length === 1}
+                      title="삭제"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add Row Button */}
+            <div className="flex justify-center pt-4">
               <Button
-                onClick={handleSubmitAll}
+                type="button"
+                variant="outline"
+                onClick={handleAddRow}
                 disabled={isSubmitting}
-                size="lg"
               >
+                <Plus className="mr-2 h-4 w-4" />
+                물품 추가하기
+              </Button>
+            </div>
+
+            <Separator className="my-1" />
+            <div className="text-sm text-right text-muted-foreground">
+              (총 {fields.length}개 항목, {totalQuantity}개 물품)
+            </div>
+
+            {/* Submit Button */}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => form.reset()}
+                disabled={isSubmitting}
+              >
+                초기화
+              </Button>
+              <Button type="submit" disabled={isSubmitting} size="lg">
                 {isSubmitting && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
                 <Package className="mr-2 h-4 w-4" />
-                모두 등록
+                {fields.length}개 물품 등록
               </Button>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {temporaryItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-4 rounded-lg border p-4"
-                >
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{item.name}</p>
-                      <Badge variant="secondary">{item.quantity}개</Badge>
-                    </div>
-                    {item.description && (
-                      <p className="text-sm text-muted-foreground">
-                        {item.description}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleRemoveItem(item.id)}
-                    disabled={isSubmitting}
-                    title="제거"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Empty State */}
-      {temporaryItems.length === 0 && (
-        <div className="rounded-lg border border-dashed p-12 text-center">
-          <Package className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h3 className="mt-4 text-lg font-semibold">목록이 비어있습니다</h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            위의 폼을 사용해서 물품을 목록에 추가하세요
-          </p>
-        </div>
-      )}
-    </div>
-  )
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
+  );
 }

@@ -167,7 +167,8 @@ export function ItemList({ items: initialItems }: ItemListProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[40%]">물품명</TableHead>
+                <TableHead className="w-[30%]">물품명</TableHead>
+                <TableHead className="hidden sm:table-cell">수량</TableHead>
                 <TableHead className="hidden sm:table-cell">설명</TableHead>
                 <TableHead className="hidden md:table-cell">등록일</TableHead>
                 <TableHead className="w-[140px] text-right">작업</TableHead>

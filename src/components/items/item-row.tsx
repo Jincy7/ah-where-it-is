@@ -20,7 +20,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
-import { Pencil, Trash2, MoveHorizontal, MoreVertical } from 'lucide-react'
+import { Pencil, Trash2, MoveHorizontal, MoreVertical, Package } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { OptimisticItem } from './item-list'
 import { ItemForm } from './item-form'
 import { MoveItemDialog } from './move-item-dialog'
@@ -73,7 +74,7 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
   if (isEditing) {
     return (
       <TableRow>
-        <TableCell colSpan={4} className="p-4">
+        <TableCell colSpan={5} className="p-4">
           <ItemForm
             containerId={item.container_id}
             defaultValues={item}
@@ -92,7 +93,13 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
       <TableRow className={item.optimistic ? 'opacity-60' : ''}>
         <TableCell className="font-medium">
           <div className="space-y-1">
-            <div>{item.name}</div>
+            <div className="flex items-center gap-2">
+              <span>{item.name}</span>
+              <Badge variant="secondary" className="gap-1">
+                <Package className="h-3 w-3" />
+                {item.quantity}
+              </Badge>
+            </div>
             {/* Mobile: Show description inline with expand/collapse */}
             {item.description && (
               <div className="sm:hidden">
@@ -109,6 +116,12 @@ export function ItemRow({ item, onDelete, onMove }: ItemRowProps) {
               </div>
             )}
           </div>
+        </TableCell>
+        <TableCell className="hidden sm:table-cell">
+          <Badge variant="outline" className="gap-1">
+            <Package className="h-3 w-3" />
+            {item.quantity}개
+          </Badge>
         </TableCell>
         <TableCell className="hidden sm:table-cell">
           {item.description || (
