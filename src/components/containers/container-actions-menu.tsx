@@ -2,16 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { MoreVertical, Pencil, Trash2, QrCode, Printer, X } from 'lucide-react'
+import { Pencil, Trash2, QrCode, Printer, X } from 'lucide-react'
 import QRCodeSVG from 'react-qr-code'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,7 +39,6 @@ export function ContainerActionsMenu({
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showQrDialog, setShowQrDialog] = useState(false)
-  const [dropdownOpen, setDropdownOpen] = useState(false)
 
   // Generate the full URL for the container
   const containerUrl = typeof window !== 'undefined'
@@ -84,8 +76,8 @@ export function ContainerActionsMenu({
 
   return (
     <>
-      {/* Desktop: Individual buttons */}
-      <div className="hidden gap-2 md:flex">
+      {/* Individual buttons for all screen sizes */}
+      <div className="flex gap-2">
         <Button variant="outline" asChild>
           <Link href={`/container/${containerId}/edit`}>
             <Pencil className="mr-2 h-4 w-4" />
@@ -104,54 +96,6 @@ export function ContainerActionsMenu({
           <QrCode className="mr-2 h-4 w-4" />
           QR 출력
         </Button>
-      </div>
-
-      {/* Mobile: Dropdown menu */}
-      <div className="md:hidden">
-        <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-10 w-10"
-              aria-label="메뉴 열기"
-            >
-              <MoreVertical className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem asChild>
-              <Link
-                href={`/container/${containerId}/edit`}
-                className="flex cursor-pointer items-center"
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                수정
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                setDropdownOpen(false)
-                setShowQrDialog(true)
-              }}
-              className="flex cursor-pointer items-center"
-            >
-              <QrCode className="mr-2 h-4 w-4" />
-              QR 출력
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => {
-                setDropdownOpen(false)
-                setShowDeleteDialog(true)
-              }}
-              className="flex cursor-pointer items-center text-destructive focus:text-destructive"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              삭제
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       {/* Delete Confirmation Dialog */}
