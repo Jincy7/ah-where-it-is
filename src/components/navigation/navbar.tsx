@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Home, Settings, Search } from "lucide-react";
+import { Archive, Dumbbell, Home, Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { UserMenu } from "./user-menu";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,8 @@ export async function Navbar() {
   // Define nav links with icon names as strings
   const navLinks = [
     { href: "/", label: "홈", icon: "home" as const },
-    { href: "/search", label: "검색", icon: "search" as const },
+    { href: "/storage", label: "보관함", icon: "archive" as const },
+    { href: "/workouts", label: "운동", icon: "dumbbell" as const },
     { href: "/settings", label: "설정", icon: "settings" as const },
   ];
 
@@ -48,9 +49,15 @@ export async function Navbar() {
               </Link>
             </Button>
             <Button variant="ghost" size="sm" asChild className="gap-2">
-              <Link href="/search">
-                <Search className="h-4 w-4" />
-                검색
+              <Link href="/storage">
+                <Archive className="h-4 w-4" />
+                보관함
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild className="gap-2">
+              <Link href="/workouts">
+                <Dumbbell className="h-4 w-4" />
+                운동
               </Link>
             </Button>
             <Button variant="ghost" size="sm" asChild className="gap-2">
