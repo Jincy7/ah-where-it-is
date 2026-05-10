@@ -2,35 +2,24 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Archive, Dumbbell, Home, Menu, Settings } from "lucide-react";
+import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-
-// Icon mapping
-const iconMap = {
-  home: Home,
-  archive: Archive,
-  dumbbell: Dumbbell,
-  settings: Settings,
-} as const;
-
-interface NavLink {
-  href: string;
-  label: string;
-  icon: keyof typeof iconMap;
-}
+import type { NavGroup } from "./nav-config";
+import { navIcons } from "./nav-icons";
 
 interface MobileNavProps {
-  navLinks: NavLink[];
+  navGroups: readonly NavGroup[];
 }
 
-export function MobileNav({ navLinks }: MobileNavProps) {
+export function MobileNav({ navGroups }: MobileNavProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -44,22 +33,58 @@ export function MobileNav({ navLinks }: MobileNavProps) {
       <SheetContent side="right">
         <SheetHeader>
           <SheetTitle>메뉴</SheetTitle>
+          <SheetDescription className="sr-only">
+            주요 메뉴와 하위 페이지 링크
+          </SheetDescription>
         </SheetHeader>
-        <nav className="flex flex-col gap-2 mt-6">
-          {navLinks.map((link) => {
-            const Icon = iconMap[link.icon];
+        <nav className="mt-6 flex flex-col gap-4">
+          {navGroups.map((group) => {
+            const Icon = navIcons[group.icon];
+
+            if (group.items?.length) {
+              return (
+                <div key={group.href} className="space-y-1">
+                  <div className="flex h-11 items-center gap-3 px-4 text-sm font-medium text-muted-foreground">
+                    <Icon className="size-5" />
+                    {group.label}
+                  </div>
+                  <div className="ml-6 flex flex-col gap-1 border-l pl-3">
+                    {group.items.map((item) => {
+                      const ItemIcon = navIcons[item.icon];
+
+                      return (
+                        <Button
+                          key={item.href}
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="h-10 justify-start gap-3"
+                          onClick={() => setOpen(false)}
+                        >
+                          <Link href={item.href}>
+                            <ItemIcon className="size-4" />
+                            {item.label}
+                          </Link>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <Button
-                key={link.href}
+                key={group.href}
                 variant="ghost"
                 size="lg"
                 asChild
                 className="justify-start gap-3"
                 onClick={() => setOpen(false)}
               >
-                <Link href={link.href}>
-                  <Icon className="h-5 w-5" />
-                  {link.label}
+                <Link href={group.href}>
+                  <Icon className="size-5" />
+                  {group.label}
                 </Link>
               </Button>
             );
