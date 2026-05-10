@@ -78,7 +78,9 @@ export function WorkoutPageClient({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <div
+      className={`mx-auto flex w-full max-w-4xl flex-col gap-6 ${activeSession ? 'pb-22' : ''}`}
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <p className="text-sm font-medium text-muted-foreground">운동 기록</p>

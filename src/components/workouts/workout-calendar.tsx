@@ -14,17 +14,18 @@ function toDate(sessionDate: string) {
 }
 
 export function WorkoutCalendar({ sessions }: WorkoutCalendarProps) {
-  const completedDates = sessions.map((session) => toDate(session.session_date))
+  const completedDates = Array.from(new Set(sessions.map((session) => session.session_date))).map(
+    toDate
+  )
 
   return (
     <div className="grid gap-4 lg:grid-cols-[auto_1fr]">
       <div className="rounded-lg border">
         <Calendar
-          mode="multiple"
-          selected={completedDates}
           modifiers={{ completed: completedDates }}
           modifiersClassNames={{
-            completed: 'bg-primary/15 text-primary font-semibold',
+            completed:
+              "relative bg-primary/10 text-primary font-semibold after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:text-[13px] after:font-bold after:leading-none after:text-primary after:content-['✓']",
           }}
           className="w-full"
         />

@@ -61,6 +61,7 @@ export {
   getActiveWorkoutSession,
   createWorkoutSession,
   completeWorkoutSession,
+  deleteWorkoutSession,
   getExerciseFavorites,
   createExerciseFavorite,
   addWorkoutExercise,

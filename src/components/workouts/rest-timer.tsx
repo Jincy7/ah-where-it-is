@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { RotateCcw, Square } from 'lucide-react'
+import { Pause, Play, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 interface RestTimerProps {
   startSignal: number
   durationSeconds?: number
+  className?: string
 }
 
 function formatSeconds(totalSeconds: number) {
@@ -15,7 +17,11 @@ function formatSeconds(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
-export function RestTimer({ startSignal, durationSeconds = 90 }: RestTimerProps) {
+export function RestTimer({
+  startSignal,
+  durationSeconds = 90,
+  className,
+}: RestTimerProps) {
   const [remaining, setRemaining] = useState(durationSeconds)
   const [isRunning, setIsRunning] = useState(false)
 
@@ -45,8 +51,23 @@ export function RestTimer({ startSignal, durationSeconds = 90 }: RestTimerProps)
     return () => window.clearInterval(interval)
   }, [isRunning])
 
+  function toggleTimer() {
+    if (remaining <= 0) {
+      setRemaining(durationSeconds)
+      setIsRunning(true)
+      return
+    }
+
+    setIsRunning((value) => !value)
+  }
+
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/35 p-3">
+    <div
+      className={cn(
+        'fixed inset-x-3 bottom-[4.75rem] z-40 mx-auto flex max-w-md items-center justify-between gap-3 rounded-lg border bg-background/95 p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/85 md:bottom-4',
+        className
+      )}
+    >
       <div>
         <p className="text-sm font-medium text-muted-foreground">휴식 타이머</p>
         <p className="text-3xl font-bold tabular-nums">{formatSeconds(remaining)}</p>
@@ -58,7 +79,7 @@ export function RestTimer({ startSignal, durationSeconds = 90 }: RestTimerProps)
           variant="secondary"
           onClick={() => {
             setRemaining(durationSeconds)
-            setIsRunning(true)
+            setIsRunning(false)
           }}
           aria-label="타이머 리셋"
         >
@@ -68,10 +89,10 @@ export function RestTimer({ startSignal, durationSeconds = 90 }: RestTimerProps)
           type="button"
           size="icon"
           variant="outline"
-          onClick={() => setIsRunning(false)}
-          aria-label="타이머 정지"
+          onClick={toggleTimer}
+          aria-label={isRunning ? '타이머 일시정지' : '타이머 재생'}
         >
-          <Square className="size-4" />
+          {isRunning ? <Pause className="size-4" /> : <Play className="size-4" />}
         </Button>
       </div>
     </div>

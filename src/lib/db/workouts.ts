@@ -90,26 +90,38 @@ function normalizeSessionDetails(session: WorkoutSessionDetails): WorkoutSession
 }
 
 function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10)
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+
+  if (!year || !month || !day) {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  return `${year}-${month}-${day}`
 }
 
-function startOfWeek(date: Date) {
-  const next = new Date(date)
-  const day = next.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  next.setDate(next.getDate() + diff)
-  next.setHours(0, 0, 0, 0)
-  return next
+function dateOnlyToUtcDate(dateOnly: string) {
+  const [year, month, day] = dateOnly.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day))
 }
 
-function addDays(date: Date, days: number) {
-  const next = new Date(date)
-  next.setDate(next.getDate() + days)
-  return next
-}
-
-function toDateOnly(date: Date) {
+function addDaysToDateOnly(dateOnly: string, days: number) {
+  const date = dateOnlyToUtcDate(dateOnly)
+  date.setUTCDate(date.getUTCDate() + days)
   return date.toISOString().slice(0, 10)
+}
+
+function startOfWeekDateOnly(dateOnly: string) {
+  const date = dateOnlyToUtcDate(dateOnly)
+  return addDaysToDateOnly(dateOnly, -date.getUTCDay())
 }
 
 function compareSets(a: ExerciseStatsSet, b: ExerciseStatsSet) {
@@ -328,6 +340,25 @@ export async function completeWorkoutSession(
     return session
   } catch (error) {
     console.error('Error in completeWorkoutSession:', error)
+    throw error
+  }
+}
+
+export async function deleteWorkoutSession(sessionId: string, userId: string): Promise<void> {
+  try {
+    await assertSessionOwner(sessionId, userId)
+    const supabase = await createClient()
+    const { error } = await supabase
+      .from('workout_sessions')
+      .delete()
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+
+    if (error) {
+      throw new Error(`Failed to delete workout session: ${error.message}`)
+    }
+  } catch (error) {
+    console.error('Error in deleteWorkoutSession:', error)
     throw error
   }
 }
@@ -730,10 +761,9 @@ export async function getExerciseStats(
 
 export async function getWeeklyWorkoutStats(userId: string): Promise<WeeklyWorkoutStats> {
   try {
-    const now = new Date()
-    const currentWeekStart = startOfWeek(now)
-    const nextWeekStart = addDays(currentWeekStart, 7)
-    const previousWeekStart = addDays(currentWeekStart, -7)
+    const currentWeekStart = startOfWeekDateOnly(todayIsoDate())
+    const nextWeekStart = addDaysToDateOnly(currentWeekStart, 7)
+    const previousWeekStart = addDaysToDateOnly(currentWeekStart, -7)
 
     const supabase = await createClient()
     const { data, error } = await supabase
@@ -741,20 +771,21 @@ export async function getWeeklyWorkoutStats(userId: string): Promise<WeeklyWorko
       .select('id, session_date')
       .eq('user_id', userId)
       .eq('status', 'completed')
-      .gte('session_date', toDateOnly(previousWeekStart))
-      .lt('session_date', toDateOnly(nextWeekStart))
+      .gte('session_date', previousWeekStart)
+      .lt('session_date', nextWeekStart)
 
     if (error) {
       throw new Error(`Failed to fetch weekly workout stats: ${error.message}`)
     }
 
     const currentWeek = (data || []).filter(
-      (session) => session.session_date >= toDateOnly(currentWeekStart)
+      (session) =>
+        session.session_date >= currentWeekStart && session.session_date < nextWeekStart
     ).length
     const previousWeek = (data || []).filter(
       (session) =>
-        session.session_date >= toDateOnly(previousWeekStart) &&
-        session.session_date < toDateOnly(currentWeekStart)
+        session.session_date >= previousWeekStart &&
+        session.session_date < currentWeekStart
     ).length
 
     return {

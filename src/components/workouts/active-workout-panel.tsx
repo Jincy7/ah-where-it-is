@@ -132,7 +132,6 @@ export function ActiveWorkoutPanel({
           item.id === exercise.id ? { ...item, sets: [...item.sets, set] } : item
         ),
       })
-      setTimerSignal((value) => value + 1)
     } catch {
       setError('저장하지 못했어요. 연결을 확인한 뒤 다시 시도해 주세요.')
     }
@@ -207,7 +206,7 @@ export function ActiveWorkoutPanel({
   return (
     <div className="space-y-4">
       <Card className="rounded-lg">
-        <CardHeader className="gap-3">
+        <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-xl">
@@ -218,21 +217,8 @@ export function ActiveWorkoutPanel({
                 {session.session_date} 기록 중
               </p>
             </div>
-            <CompleteWorkoutDialog session={session} onComplete={completeWorkout}>
-              <Button>완료</Button>
-            </CompleteWorkoutDialog>
           </div>
-          <RestTimer startSignal={timerSignal} />
         </CardHeader>
-        <CardContent className="space-y-4">
-          <ExercisePicker
-            sessionId={session.id}
-            favorites={favorites}
-            onAddExercise={addExercise}
-            onAddCardio={addCardio}
-          />
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </CardContent>
       </Card>
 
       <div className="space-y-3">
@@ -245,6 +231,18 @@ export function ActiveWorkoutPanel({
             onDeleteSet={deleteSet}
           />
         ))}
+
+        <Card className="rounded-lg">
+          <CardContent className="space-y-4 pt-4">
+            <ExercisePicker
+              sessionId={session.id}
+              favorites={favorites}
+              onAddExercise={addExercise}
+              onAddCardio={addCardio}
+            />
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </CardContent>
+        </Card>
 
         {session.cardio_entries.length > 0 && (
           <Card className="rounded-lg">
@@ -263,7 +261,13 @@ export function ActiveWorkoutPanel({
             </CardContent>
           </Card>
         )}
+
+        <CompleteWorkoutDialog session={session} onComplete={completeWorkout}>
+          <Button className="h-12 w-full">완료</Button>
+        </CompleteWorkoutDialog>
       </div>
+
+      <RestTimer startSignal={timerSignal} />
     </div>
   )
 }
