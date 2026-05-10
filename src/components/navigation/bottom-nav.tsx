@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Settings } from "lucide-react";
+import { Archive, Dumbbell, Home, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -18,9 +18,14 @@ const navItems: NavItem[] = [
     icon: Home,
   },
   {
-    href: "/search",
-    label: "검색",
-    icon: Search,
+    href: "/storage",
+    label: "보관함",
+    icon: Archive,
+  },
+  {
+    href: "/workouts",
+    label: "운동",
+    icon: Dumbbell,
   },
   {
     href: "/settings",
@@ -36,6 +41,9 @@ export function BottomNav() {
   const isActive = (href: string) => {
     if (href === "/") {
       return pathname === "/";
+    }
+    if (href === "/storage") {
+      return pathname.startsWith("/storage") || pathname.startsWith("/container");
     }
     return pathname.startsWith(href);
   };

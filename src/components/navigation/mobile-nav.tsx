@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, Home, Settings, Search } from "lucide-react";
+import { Archive, Dumbbell, Home, Menu, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -15,7 +15,8 @@ import {
 // Icon mapping
 const iconMap = {
   home: Home,
-  search: Search,
+  archive: Archive,
+  dumbbell: Dumbbell,
   settings: Settings,
 } as const;
 

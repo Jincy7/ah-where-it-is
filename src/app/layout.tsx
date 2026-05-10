@@ -16,11 +16,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "아 그거 어딨지 - 보관함 관리",
-  description: "물건을 잃어버리지 않도록 도와주는 보관함 관리 시스템. QR 코드로 간편하게 물품을 찾고 관리하세요.",
+  title: "아 그거 어딨지 - 생활 기록장",
+  description: "보관함과 운동 기록처럼 잊기 쉬운 생활 정보를 빠르게 남기고 다시 찾는 개인 기록장입니다.",
   applicationName: "아 그거 어딨지",
   authors: [{ name: "Storage Manager Team" }],
-  keywords: ["보관함", "물품관리", "정리", "수납", "QR코드", "창고관리"],
+  keywords: ["보관함", "물품관리", "운동기록", "생활기록", "정리", "수납"],
   creator: "Storage Manager Team",
   publisher: "Storage Manager Team",
   formatDetection: {

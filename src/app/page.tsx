@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getContainers, getLocations } from '@/lib/db'
-import { ContainersPageClient } from '@/components/containers/containers-page-client'
+import { LifeLogHome } from '@/components/life-log/life-log-home'
 import { redirect } from 'next/navigation'
 
 export default async function HomePage() {
@@ -14,10 +13,5 @@ export default async function HomePage() {
     redirect('/login')
   }
 
-  const [containers, locations] = await Promise.all([
-    getContainers(user.id),
-    getLocations(user.id),
-  ])
-
-  return <ContainersPageClient initialContainers={containers} locations={locations} />
+  return <LifeLogHome />
 }
