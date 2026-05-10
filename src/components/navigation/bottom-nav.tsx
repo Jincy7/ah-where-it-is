@@ -2,37 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Archive, Dumbbell, Home, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ElementType;
-}
-
-const navItems: NavItem[] = [
-  {
-    href: "/",
-    label: "홈",
-    icon: Home,
-  },
-  {
-    href: "/storage",
-    label: "보관함",
-    icon: Archive,
-  },
-  {
-    href: "/workouts",
-    label: "운동",
-    icon: Dumbbell,
-  },
-  {
-    href: "/settings",
-    label: "설정",
-    icon: Settings,
-  },
-];
+import { bottomNavItems } from "./nav-config";
+import { navIcons } from "./nav-icons";
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -51,8 +23,8 @@ export function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex items-center justify-around h-16 pb-safe">
-        {navItems.map((item) => {
-          const Icon = item.icon;
+        {bottomNavItems.map((item) => {
+          const Icon = navIcons[item.icon];
           const active = isActive(item.href);
 
           return (
