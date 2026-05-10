@@ -3,7 +3,7 @@ import { updateSession } from '@/lib/supabase/middleware'
 import { NextResponse } from 'next/server'
 
 /**
- * Middleware for authentication and route protection.
+ * Proxy for authentication and route protection.
  *
  * Protected routes (require authentication):
  * - / (home)
@@ -22,7 +22,7 @@ import { NextResponse } from 'next/server'
  * - Unauthenticated users accessing protected routes → redirect to /login
  * - Authenticated users accessing /login or /signup → redirect to /
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { user, response } = await updateSession(request)
 
   const { pathname } = request.nextUrl
