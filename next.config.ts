@@ -14,6 +14,10 @@ const withPWA = withPWAInit({
     // 런타임 캐싱 플러그인을 수동으로 설정하여 async 함수 사용 방지
     runtimeCaching: [
       {
+        urlPattern: ({ sameOrigin, url }) => sameOrigin && (url.pathname.startsWith('/api/settings/gemini') || url.pathname.startsWith('/api/items/analyze')),
+        handler: 'NetworkOnly',
+      },
+      {
         // 루트 경로 캐싱 (start-url 대체)
         urlPattern: /^\/$/,
         handler: 'NetworkFirst',

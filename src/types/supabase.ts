@@ -34,6 +34,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_usage_limits: {
+        Row: {
+          calls: number
+          scope: string
+          user_id: string
+          window_start: string
+        }
+        Insert: {
+          calls: number
+          scope: string
+          user_id: string
+          window_start: string
+        }
+        Update: {
+          calls?: number
+          scope?: string
+          user_id?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       containers: {
         Row: {
           created_at: string
@@ -99,6 +120,41 @@ export type Database = {
         }
         Relationships: []
       }
+      item_registration_requests: {
+        Row: {
+          container_id: string
+          created_at: string
+          payload: Json
+          request_id: string
+          result: Json
+          user_id: string
+        }
+        Insert: {
+          container_id: string
+          created_at?: string
+          payload: Json
+          request_id: string
+          result?: Json
+          user_id: string
+        }
+        Update: {
+          container_id?: string
+          created_at?: string
+          payload?: Json
+          request_id?: string
+          result?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "item_registration_requests_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       items: {
         Row: {
           container_id: string
@@ -159,6 +215,24 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_gemini_keys: {
+        Row: {
+          encrypted_key: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          encrypted_key: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          encrypted_key?: string
           updated_at?: string
           user_id?: string
         }
@@ -326,7 +400,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      consume_ai_quota: {
+        Args: { p_user_id: string; p_scope: string }
+        Returns: boolean
+      }
+      register_items_once: {
+        Args: { p_request_id: string; p_container_id: string; p_items: Json }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

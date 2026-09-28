@@ -1,46 +1,43 @@
-'use client'
+"use client";
 
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ItemList } from '@/components/items/item-list'
-import { BulkItemForm } from '@/components/items/bulk-item-form'
-import { Item } from '@/lib/db'
-import { List, PackagePlus } from 'lucide-react'
+import { useRouter, useSearchParams } from "next/navigation";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ItemList } from "@/components/items/item-list";
+import { PhotoItemRegistration } from "@/components/items/photo-item-registration";
+import { BulkItemForm } from "@/components/items/bulk-item-form";
+import { Item } from "@/lib/db";
+import { List, PackagePlus } from "lucide-react";
 
 interface ContainerTabsProps {
-  containerId: string
-  items: Item[]
+  containerId: string;
+  items: Item[];
 }
 
 export function ContainerTabs({ containerId, items }: ContainerTabsProps) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const currentTab = searchParams.get('tab') || 'list'
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab") || "list";
 
   function handleTabChange(value: string) {
-    const params = new URLSearchParams(searchParams.toString())
-    if (value === 'list') {
-      params.delete('tab')
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === "list") {
+      params.delete("tab");
     } else {
-      params.set('tab', value)
+      params.set("tab", value);
     }
-    const queryString = params.toString()
-    const newUrl = queryString
-      ? `?${queryString}`
-      : window.location.pathname
-    router.push(newUrl, { scroll: false })
+    const queryString = params.toString();
+    const newUrl = queryString ? `?${queryString}` : window.location.pathname;
+    router.push(newUrl, { scroll: false });
   }
 
   function handleBulkFormSuccess() {
     // Switch to list tab and refresh
-    const params = new URLSearchParams(searchParams.toString())
-    params.delete('tab')
-    const queryString = params.toString()
-    const newUrl = queryString
-      ? `?${queryString}`
-      : window.location.pathname
-    router.push(newUrl)
-    router.refresh()
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("tab");
+    const queryString = params.toString();
+    const newUrl = queryString ? `?${queryString}` : window.location.pathname;
+    router.push(newUrl);
+    router.refresh();
   }
 
   return (
@@ -60,12 +57,16 @@ export function ContainerTabs({ containerId, items }: ContainerTabsProps) {
       <TabsContent value="list" className="mt-6">
         <ItemList items={items} />
       </TabsContent>
-      <TabsContent value="register" className="mt-6">
+      <TabsContent value="register" className="mt-6 space-y-6">
+        <PhotoItemRegistration
+          containerId={containerId}
+          existingNames={items.map((item) => item.name)}
+        />
         <BulkItemForm
           containerId={containerId}
           onSuccess={handleBulkFormSuccess}
         />
       </TabsContent>
     </Tabs>
-  )
+  );
 }

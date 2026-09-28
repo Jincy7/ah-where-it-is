@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useState, useRef } from "react";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -23,16 +23,24 @@ import {
 } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Package } from "lucide-react";
+import type { ItemDraft } from "@/lib/ai/schema";
 import { Separator } from "../ui/separator";
 
 const itemRowSchema = z.object({
-  name: z.string().min(1, "물품명을 입력해주세요"),
-  quantity: z.coerce.number().min(1, "수량은 1개 이상이어야 합니다"),
-  description: z.string().optional(),
+  name: z.string().trim().min(1, "물품명을 입력해주세요").max(100),
+  quantity: z.coerce
+    .number()
+    .int("수량은 정수로 입력해주세요")
+    .min(1, "수량을 확인하고 1 이상 입력해주세요")
+    .max(9999),
+  description: z.string().max(1000).optional(),
 });
 
 const bulkItemSchema = z.object({
-  items: z.array(itemRowSchema).min(1, "최소 1개 이상의 물품을 입력해주세요"),
+  items: z
+    .array(itemRowSchema)
+    .min(1, "최소 1개 이상의 물품을 입력해주세요")
+    .max(100),
 });
 
 type BulkItemFormValues = z.infer<typeof bulkItemSchema>;
@@ -40,15 +48,36 @@ type BulkItemFormValues = z.infer<typeof bulkItemSchema>;
 interface BulkItemFormProps {
   containerId: string;
   onSuccess?: () => void;
+  onPendingChange?: (pending: boolean) => void;
+  initialItems?: ItemDraft[];
+  existingNames?: string[];
+  title?: string;
 }
 
-export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
+export function BulkItemForm({
+  containerId,
+  onSuccess,
+  onPendingChange,
+  initialItems,
+  existingNames = [],
+  title,
+}: BulkItemFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const requestId = useRef<string | null>(null);
+  const [pendingPayload, setPendingPayload] =
+    useState<BulkItemFormValues | null>(null);
+  const locked = isSubmitting || pendingPayload !== null;
 
   const form = useForm<BulkItemFormValues>({
     resolver: zodResolver(bulkItemSchema),
     defaultValues: {
-      items: [{ name: "", quantity: 1, description: "" }],
+      items: initialItems?.map((item) => ({
+        name: item.name,
+        quantity: item.quantity ?? 0,
+        description: [item.description, item.uncertainty]
+          .filter(Boolean)
+          .join(" · "),
+      })) ?? [{ name: "", quantity: 1, description: "" }],
     },
   });
 
@@ -64,6 +93,10 @@ export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
   async function onSubmit(values: BulkItemFormValues) {
     try {
       setIsSubmitting(true);
+      requestId.current ??= crypto.randomUUID();
+      const payload = pendingPayload ?? values;
+      setPendingPayload(payload);
+      onPendingChange?.(true);
 
       const response = await fetch("/api/items/bulk", {
         method: "POST",
@@ -72,18 +105,30 @@ export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
         },
         body: JSON.stringify({
           container_id: containerId,
-          items: values.items,
+          items: payload.items,
+          request_id: requestId.current,
         }),
       });
 
       if (!response.ok) {
         const error = await response.json();
+        if (
+          response.status >= 400 &&
+          response.status < 500 &&
+          response.status !== 409
+        ) {
+          setPendingPayload(null);
+          onPendingChange?.(false);
+        }
         throw new Error(error.error || "물품 등록에 실패했습니다");
       }
 
       const data = await response.json();
 
       toast.success(`${data.count}개의 물품이 등록되었습니다`);
+      setPendingPayload(null);
+      onPendingChange?.(false);
+      requestId.current = null;
       form.reset();
 
       if (onSuccess) {
@@ -92,29 +137,50 @@ export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
     } catch (error) {
       console.error("Error submitting bulk items:", error);
       toast.error(
-        error instanceof Error ? error.message : "물품 등록에 실패했습니다"
+        error instanceof Error ? error.message : "물품 등록에 실패했습니다",
       );
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  const totalQuantity = fields.reduce((sum, _, index) => {
-    const quantity = form.watch(`items.${index}.quantity`);
-    return sum + (Number(quantity) || 0);
-  }, 0);
+  const watchedItems = useWatch({ control: form.control, name: "items" });
+  const totalQuantity = watchedItems.reduce(
+    (sum, item) => sum + (Number(item.quantity) || 0),
+    0,
+  );
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>물품 일괄 등록</CardTitle>
+        <CardTitle>{title ?? "물품 일괄 등록"}</CardTitle>
         <CardDescription>
-          여러 물품을 한번에 입력하고 등록하세요
+          {initialItems
+            ? "사진 속 물품명과 수량을 확인하고, 중복된 항목은 제외해주세요"
+            : "여러 물품을 한번에 입력하고 등록하세요"}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form
+            onSubmit={(event) => void form.handleSubmit(onSubmit)(event)}
+            className="space-y-6"
+          >
+            {initialItems?.some(
+              (item) => item.quantity === null || item.uncertainty,
+            ) && (
+              <p className="text-sm text-muted-foreground">
+                확인이 필요한 항목이 있습니다. 수량이 0으로 표시된 항목은 실제
+                수량을 입력해주세요.
+              </p>
+            )}
+            {pendingPayload && !isSubmitting && (
+              <p role="alert" className="text-sm text-destructive">
+                등록 결과를 확인하지 못했습니다. 아래 등록 버튼을 다시 누르면
+                같은 요청을 안전하게 재시도합니다. 입력 내용은 결과 확인까지
+                유지됩니다.
+              </p>
+            )}
             {/* Multi-row input */}
             <div className="space-y-3">
               {/* Header Row - Desktop Only */}
@@ -144,12 +210,23 @@ export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
                             </FormLabel>
                             <FormControl>
                               <Input
+                                aria-label={`${index + 1}번째 물품명`}
                                 placeholder="예: 겨울 코트"
                                 {...field}
-                                disabled={isSubmitting}
+                                disabled={locked}
                               />
                             </FormControl>
                             <FormMessage />
+                            {existingNames.some(
+                              (name) =>
+                                name.trim().toLocaleLowerCase() ===
+                                field.value.trim().toLocaleLowerCase(),
+                            ) && (
+                              <p className="text-xs text-muted-foreground">
+                                같은 이름의 물품이 이미 있습니다. 중복 여부를
+                                확인해주세요.
+                              </p>
+                            )}
                           </FormItem>
                         )}
                       />
@@ -164,11 +241,14 @@ export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
                             <FormLabel className="md:hidden">수량 *</FormLabel>
                             <FormControl>
                               <Input
+                                aria-label={`${index + 1}번째 수량`}
                                 type="number"
+                                max={9999}
+                                step={1}
                                 min={1}
                                 placeholder="1"
                                 {...field}
-                                disabled={isSubmitting}
+                                disabled={locked}
                                 className="text-center"
                               />
                             </FormControl>
@@ -188,9 +268,10 @@ export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
                           <FormLabel className="md:hidden">설명</FormLabel>
                           <FormControl>
                             <Input
+                              aria-label={`${index + 1}번째 설명`}
                               placeholder="예: 검정색, M사이즈"
                               {...field}
-                              disabled={isSubmitting}
+                              disabled={locked}
                             />
                           </FormControl>
                           <FormMessage />
@@ -205,7 +286,7 @@ export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => remove(index)}
-                      disabled={isSubmitting || fields.length === 1}
+                      disabled={locked || fields.length === 1}
                       title="삭제"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -221,7 +302,7 @@ export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
                 type="button"
                 variant="outline"
                 onClick={handleAddRow}
-                disabled={isSubmitting}
+                disabled={locked || fields.length >= 100}
               >
                 <Plus className="mr-2 h-4 w-4" />
                 물품 추가하기
@@ -239,7 +320,7 @@ export function BulkItemForm({ containerId, onSuccess }: BulkItemFormProps) {
                 type="button"
                 variant="outline"
                 onClick={() => form.reset()}
-                disabled={isSubmitting}
+                disabled={locked}
               >
                 초기화
               </Button>

@@ -1,27 +1,30 @@
-import { createClient } from '@/lib/supabase/server'
-import { getLocations } from '@/lib/db'
-import { LocationManager } from '@/components/locations/location-manager'
-import { BulkQrCodeButton } from '@/components/containers/bulk-qr-code-button'
-import { redirect } from 'next/navigation'
+import { createClient } from "@/lib/supabase/server";
+import { getLocations } from "@/lib/db";
+import { LocationManager } from "@/components/locations/location-manager";
+import { BulkQrCodeButton } from "@/components/containers/bulk-qr-code-button";
+import { GeminiKeySettings } from "@/components/settings/gemini-key-settings";
+import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
-  const supabase = await createClient()
+  const supabase = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await supabase.auth.getUser();
 
   // If not authenticated, redirect to login
   if (!user) {
-    redirect('/login')
+    redirect("/login");
   }
 
-  const locations = await getLocations(user.id)
+  const locations = await getLocations(user.id);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">설정</h1>
-        <p className="text-muted-foreground">위치 정보를 관리하세요</p>
+        <p className="text-muted-foreground">
+          위치 정보와 사진 인식 AI를 관리하세요
+        </p>
       </div>
 
       {/* Tools Section */}
@@ -39,7 +42,9 @@ export default async function SettingsPage() {
         </div>
       </div>
 
+      <GeminiKeySettings />
+
       <LocationManager locations={locations} />
     </div>
-  )
+  );
 }
