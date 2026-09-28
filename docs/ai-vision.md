@@ -47,7 +47,7 @@ RUN_LIVE_GEMINI=1 pnpm test:integration
 - 실제 `gemini-3.5-flash-lite`로 앱의 테스트 일러스트를 분석해 물품 초안 2개 수신. 실제 생활 사진의 인식 정확도 평가는 별도다.
 - 브라우저 390px/1440px에서 가로 넘침 없음. 키 저장/삭제, 두 사진 중 한 장 실패와 개별 재시도, 수량 미확정 차단, 중복명 안내 확인. 등록을 서버에서 완료한 후 응답을 강제로 끊고 재시도했을 때 최종 2사진→2물품으로 중복 없음 확인.
 - lint는 기존 container-form의 React Hook Form 경고 1개를 제외하고 통과.
-- 의존성 감사는 기존 HEAD와 동일한 68건(critical 2, high 31, moderate 31, low 4). 이번 기능의 의존성으로 증가하지 않았으나 배포 전 별도 보안 업데이트가 필요하다.
+- AI 기능 최초 검증 당시 의존성 감사는 기존 HEAD와 동일한 68건이었다. 이후 [의존성 보안 업데이트](dependency-security.md)로 전체·운영 의존성 모두 알려진 취약점 0건을 확인했다.
 - 로컬 마이그레이션 적용 완료. 이후 사용자가 운영 Supabase SQL 적용 완료를 확인했으며, Vercel Production에 `GEMINI_KEY_ENCRYPTION_SECRET`과 `SUPABASE_SERVICE_ROLE_KEY`를 Secret으로 등록한 화면을 확인했다. 운영 SQL 적용은 사용자 확인에 근거하며 CLI로 별도 검증하지 않았다.
 
 공식 모델 정보: https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite
