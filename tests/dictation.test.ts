@@ -157,13 +157,56 @@ test('permission timeout releases the busy state and ignores a later grant', asy
   const permission = deferred<MediaStream>();
   const f = fixture({ getUserMedia: () => permission.promise, permissionTimeoutMs: 5 });
   try {
-    const start = f.session.start();
+    let outcome: boolean | undefined;
+    const start = f.session.start().then(value => { outcome = value; return value; });
     await new Promise(resolve => setTimeout(resolve, 15));
     assert.equal(f.session.state, 'error');
+    assert.equal(outcome, false, 'timeout must finish start even if the browser never answers');
     permission.resolve(f.stream);
     assert.equal(await start, false);
+    await tick();
     assert.equal(f.stopped, 1);
     assert.equal(f.requests.length, 0);
+  } finally { f.session.dispose(); }
+});
+
+for (const action of ['cancel', 'deactivate', 'dispose'] as const) {
+  test(`${action} completes a pending permission attempt without waiting for the browser`, async () => {
+    const permission = deferred<MediaStream>();
+    const f = fixture({ getUserMedia: () => permission.promise });
+    try {
+      let outcome: boolean | undefined;
+      void f.session.start().then(value => { outcome = value; });
+      if (action === 'deactivate') f.session.setActive(false);
+      else f.session[action]();
+      await tick();
+      assert.equal(outcome, false);
+      permission.resolve(f.stream);
+      await tick();
+      assert.equal(f.stopped, 1);
+      assert.equal(f.requests.length, 0);
+    } finally { f.session.dispose(); }
+  });
+}
+
+test('a cancelled permission grant cannot interrupt a newer recording', async () => {
+  const permission = deferred<MediaStream>();
+  let attempts = 0;
+  let lateStopped = 0;
+  const lateStream = { getTracks: () => [{ stop: () => { lateStopped++; } }] } as unknown as MediaStream;
+  const f = fixture({ getUserMedia: () => ++attempts === 1 ? permission.promise : Promise.resolve(f.stream) });
+  try {
+    void f.session.start();
+    f.session.cancel();
+    assert.equal(await f.session.start(), true);
+    permission.resolve(lateStream);
+    await tick();
+    assert.equal(lateStopped, 1);
+    assert.equal(f.stopped, 0);
+    assert.equal(f.session.state, 'recording');
+    f.session.stop();
+    await tick();
+    assert.deepEqual(f.texts, ['검은색 충전기']);
   } finally { f.session.dispose(); }
 });
 

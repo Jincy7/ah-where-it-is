@@ -29,6 +29,9 @@ export function useDictation(options: Options) {
       onError: setError,
       onText: text => current.current.onTranscript(text),
     });
+    // Fast Refresh preserves hook state while replacing this session and its timers.
+    // Publish the new session's idle state and clear any error left by the old one.
+    controller.cancel();
     controller.setActive(current.current.active);
     session.current = controller;
     return () => { controller.dispose(); if (session.current === controller) session.current = null; };

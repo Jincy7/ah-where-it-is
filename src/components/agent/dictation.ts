@@ -36,6 +36,7 @@ export class DictationSession {
   private stream: MediaStream | null = null;
   private recorder: MediaRecorder | null = null;
   private request: AbortController | null = null;
+  private cancelPermission: (() => void) | null = null;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   constructor(private readonly deps: Dependencies) {}
 
@@ -50,6 +51,7 @@ export class DictationSession {
   private stopTracks() { this.stream?.getTracks().forEach(track => track.stop()); this.stream = null; }
   private release() {
     this.timers.forEach(clearTimeout); this.timers.clear();
+    this.cancelPermission?.(); this.cancelPermission = null;
     this.request?.abort(); this.request = null;
     const recorder = this.recorder; this.recorder = null;
     if (recorder) {
@@ -81,9 +83,18 @@ export class DictationSession {
     this.transition('requesting');
     const permissionTimer = this.timer(() => { if (this.valid(token)) this.fail('마이크 권한을 확인하지 못했습니다. 권한을 허용한 뒤 다시 눌러주세요.'); }, this.deps.permissionTimeoutMs ?? 30_000);
     try {
-      const stream = await this.deps.getUserMedia();
+      // Browsers may leave their permission promise unresolved indefinitely. Finish
+      // our attempt on cancellation, while still releasing any late native stream.
+      const stream = await new Promise<MediaStream | null>((resolve, reject) => {
+        this.cancelPermission = () => resolve(null);
+        this.deps.getUserMedia().then(stream => {
+          if (!this.valid(token)) { stream.getTracks().forEach(track => track.stop()); resolve(null); }
+          else resolve(stream);
+        }, reject);
+      });
       this.clearTimer(permissionTimer);
-      if (!this.valid(token)) { stream.getTracks().forEach(track => track.stop()); return false; }
+      if (!this.valid(token) || !stream) { stream?.getTracks().forEach(track => track.stop()); return false; }
+      this.cancelPermission = null;
       this.stream = stream;
       const recorder = this.deps.createRecorder(stream);
       this.recorder = recorder;
