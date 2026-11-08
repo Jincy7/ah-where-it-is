@@ -20,7 +20,7 @@ export const chatRequestSchema = z.object({
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
 export const toolNames = ['search_items','list_locations','get_location','list_containers','get_container','analyze_photo','update_photo_draft','prepare_change','get_action_status','cancel_change'] as const;
 export type ToolName = typeof toolNames[number];
-export const toolCallSchema = z.object({name:z.enum(toolNames),arguments:z.record(z.unknown()),context:contextSchema.optional()}).strict();
+export const toolCallSchema = z.object({name:z.enum(toolNames),arguments:z.record(z.string(),z.unknown()),context:contextSchema.optional()}).strict();
 export type ToolEvent = { name: ToolName; result: unknown };
 export type AgentReply = {message:string;events:ToolEvent[]};
 

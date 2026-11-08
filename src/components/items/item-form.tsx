@@ -19,9 +19,9 @@ import { Loader2, Plus } from 'lucide-react'
 import type { Item } from '@/lib/db'
 import { OptimisticItem } from './item-list'
 
-const itemSchema = z.object({
+export const itemSchema = z.object({
   name: z.string().min(1, '물품명을 입력해주세요'),
-  quantity: z.coerce.number().min(1, '수량은 1개 이상이어야 합니다'),
+  quantity: z.coerce.number<string | number>().min(1, '수량은 1개 이상이어야 합니다'),
   description: z.string().optional(),
 })
 
@@ -46,7 +46,7 @@ export function ItemForm({
 }: ItemFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const form = useForm<ItemFormValues>({
+  const form = useForm<z.input<typeof itemSchema>, unknown, ItemFormValues>({
     resolver: zodResolver(itemSchema),
     defaultValues: {
       name: defaultValues?.name || '',

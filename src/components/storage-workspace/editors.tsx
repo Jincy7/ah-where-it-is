@@ -16,10 +16,10 @@ import { storageRequest, type PrepareChange } from './contracts'
 
 const itemSchema = z.object({
   name: z.string().trim().min(1, '물품명을 입력해주세요').max(100),
-  quantity: z.coerce.number().int('정수로 입력해주세요').min(1, '수량을 확인해주세요').max(9999),
+  quantity: z.coerce.number<string | number>().int('정수로 입력해주세요').min(1, '수량을 확인해주세요').max(9999),
   description: z.string().max(1000),
 })
-const itemFormSchema = z.object({ items: z.array(itemSchema).min(1, '물품을 추가해주세요').max(100) })
+export const itemFormSchema = z.object({ items: z.array(itemSchema).min(1, '물품을 추가해주세요').max(100) })
 type ItemValues = z.infer<typeof itemFormSchema>
 
 export function ItemEditor({ item, containerId, prepare, onPrepared }: {
@@ -28,7 +28,7 @@ export function ItemEditor({ item, containerId, prepare, onPrepared }: {
   prepare: PrepareChange
   onPrepared: () => void
 }) {
-  const form = useForm<ItemValues>({
+  const form = useForm<z.input<typeof itemFormSchema>, unknown, ItemValues>({
     resolver: zodResolver(itemFormSchema),
     defaultValues: { items: [{ name: item?.name ?? '', quantity: item?.quantity ?? 1, description: item?.description ?? '' }] },
   })

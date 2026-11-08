@@ -22,10 +22,10 @@ export const actionPayloadSchemas = {
 };
 export const changeSchema = z.object({
   type: z.enum(["register_items", "update_item", "move_item", "move_items", "delete_item", "create_container", "update_container", "delete_container", "create_location", "update_location", "delete_location"]),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   action_id: id.optional(),
   revision: z.number().int().positive().optional(),
-  expected_versions: z.record(z.number().int().positive()).optional(),
+  expected_versions: z.record(z.string(), z.number().int().positive()).optional(),
 }).strict().refine((x) => !!x.action_id === !!x.revision, "수정할 작업과 버전을 함께 입력해주세요");
 export const confirmationSchema = z.object({ revision: z.number().int().positive(), payload_hash: z.string().regex(/^[a-f0-9]{64}$/), idempotency_key: id }).strict();
 export const cancellationSchema = z.object({ revision: z.number().int().positive() }).strict();

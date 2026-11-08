@@ -29,14 +29,14 @@ import { Separator } from "../ui/separator";
 const itemRowSchema = z.object({
   name: z.string().trim().min(1, "물품명을 입력해주세요").max(100),
   quantity: z.coerce
-    .number()
+    .number<string | number>()
     .int("수량은 정수로 입력해주세요")
     .min(1, "수량을 확인하고 1 이상 입력해주세요")
     .max(9999),
   description: z.string().max(1000).optional(),
 });
 
-const bulkItemSchema = z.object({
+export const bulkItemSchema = z.object({
   items: z
     .array(itemRowSchema)
     .min(1, "최소 1개 이상의 물품을 입력해주세요")
@@ -68,7 +68,7 @@ export function BulkItemForm({
     useState<BulkItemFormValues | null>(null);
   const locked = isSubmitting || pendingPayload !== null;
 
-  const form = useForm<BulkItemFormValues>({
+  const form = useForm<z.input<typeof bulkItemSchema>, unknown, BulkItemFormValues>({
     resolver: zodResolver(bulkItemSchema),
     defaultValues: {
       items: initialItems?.map((item) => ({
