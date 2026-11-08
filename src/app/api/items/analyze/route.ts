@@ -1,8 +1,10 @@
 import sharp from "sharp";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { consumeQuota, userGeminiKey } from "@/lib/ai/server";
+import { consumeQuota, userProviderKey } from "@/lib/ai/server";
 import { analyzeImage, VisionError } from "@/lib/ai/gemini";
+import { analyzeOpenAIImage } from "@/lib/ai/openai";
+import { providerSchema } from "@/lib/ai/providers";
 import { MAX_IMAGE_BYTES } from "@/lib/ai/schema";
 import {
   assertSameOrigin,
@@ -22,16 +24,23 @@ export async function POST(request: Request) {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) throw new VisionError("로그인이 필요합니다", 401);
-    const containerId = new URL(request.url).searchParams.get("container_id");
-    if (!z.string().uuid().safeParse(containerId).success)
+    const params = new URL(request.url).searchParams;
+    const parsedProvider = providerSchema.safeParse(params.get("provider") ?? "gemini");
+    if (!parsedProvider.success) throw new VisionError("분석 제공자를 선택해주세요", 400);
+    const provider = parsedProvider.data;
+    const containerId = params.get("container_id");
+    if ((!containerId && provider === "gemini") || (containerId !== null && !z.string().uuid().safeParse(containerId).success))
       throw new VisionError("보관함을 선택해주세요", 400);
-    const { data: container } = await supabase
-      .from("containers")
-      .select("id")
-      .eq("id", containerId!)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!container) throw new VisionError("보관함을 찾을 수 없습니다", 404);
+    if (containerId) {
+      const { data: container, error } = await supabase
+        .from("containers")
+        .select("id")
+        .eq("id", containerId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) throw new VisionError("보관함 정보를 불러오지 못했습니다", 503);
+      if (!container) throw new VisionError("보관함을 찾을 수 없습니다", 404);
+    }
     if (
       !["image/jpeg", "image/png", "image/webp"].includes(
         request.headers.get("content-type") ?? "",
@@ -62,9 +71,9 @@ export async function POST(request: Request) {
         400,
       );
     }
-    const key = await userGeminiKey(user.id);
+    const key = await userProviderKey(user.id, provider);
     await consumeQuota(user.id, "analysis");
-    const result = await analyzeImage(key, jpeg);
+    const result = await (provider === "openai" ? analyzeOpenAIImage : analyzeImage)(key, jpeg);
     return privateJson(result);
   } catch (error) {
     return errorResponse(error);

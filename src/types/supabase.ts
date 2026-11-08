@@ -34,6 +34,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      user_ai_credentials: {
+        Row: {
+          user_id: string
+          provider: "openai" | "gemini"
+          encrypted_key: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          provider: "openai" | "gemini"
+          encrypted_key: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          provider?: "openai" | "gemini"
+          encrypted_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_usage_limits: {
         Row: {
           calls: number

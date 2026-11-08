@@ -1,9 +1,10 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import type { AIProvider } from "./providers";
 
 function encryptionKey(secret: string): Buffer {
   const key = Buffer.from(secret, "base64");
   if (key.length !== 32 || key.toString("base64") !== secret) {
-    throw new Error("Gemini 키 암호화 설정을 확인해주세요");
+    throw new Error("AI 키 암호화 설정을 확인해주세요");
   }
   return key;
 }
@@ -12,10 +13,11 @@ export function encryptApiKey(
   value: string,
   userId: string,
   secret: string,
+  provider: AIProvider = "gemini",
 ): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(secret), iv);
-  cipher.setAAD(Buffer.from(`gemini:v1:${userId}`));
+  cipher.setAAD(Buffer.from(`${provider}:v1:${userId}`));
   const ciphertext = Buffer.concat([
     cipher.update(value, "utf8"),
     cipher.final(),
@@ -32,6 +34,7 @@ export function decryptApiKey(
   value: string,
   userId: string,
   secret: string,
+  provider: AIProvider = "gemini",
 ): string {
   const [version, iv, tag, ciphertext, extra] = value.split(".");
   if (version !== "v1" || !iv || !tag || !ciphertext || extra !== undefined)
@@ -41,7 +44,7 @@ export function decryptApiKey(
     encryptionKey(secret),
     Buffer.from(iv, "base64"),
   );
-  decipher.setAAD(Buffer.from(`gemini:v1:${userId}`));
+  decipher.setAAD(Buffer.from(`${provider}:v1:${userId}`));
   decipher.setAuthTag(Buffer.from(tag, "base64"));
   return Buffer.concat([
     decipher.update(Buffer.from(ciphertext, "base64")),

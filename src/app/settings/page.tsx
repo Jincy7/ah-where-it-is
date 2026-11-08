@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getLocations } from "@/lib/db";
 import { LocationManager } from "@/components/locations/location-manager";
 import { BulkQrCodeButton } from "@/components/containers/bulk-qr-code-button";
-import { GeminiKeySettings } from "@/components/settings/gemini-key-settings";
+import { AIKeySettings } from "@/components/settings/ai-key-settings";
 import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
@@ -23,7 +23,7 @@ export default async function SettingsPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">설정</h1>
         <p className="text-muted-foreground">
-          위치 정보와 사진 인식 AI를 관리하세요
+          위치 정보와 AI 제공자 키를 관리하세요
         </p>
       </div>
 
@@ -42,7 +42,8 @@ export default async function SettingsPage() {
         </div>
       </div>
 
-      <GeminiKeySettings />
+      <AIKeySettings provider="openai" />
+      <AIKeySettings provider="gemini" />
 
       <LocationManager locations={locations} />
     </div>
