@@ -84,7 +84,7 @@ export async function userProviderKey(userId: string, provider: AIProvider) {
 }
 export async function consumeQuota(
   userId: string,
-  scope: "analysis" | "key-write" | "chat" | "realtime" | "tool",
+  scope: "analysis" | "key-write" | "chat" | "realtime" | "tool" | "transcription",
 ) {
   const { data, error } = await aiAdmin().rpc("consume_ai_quota", {
     p_user_id: userId,
