@@ -17,9 +17,11 @@ export function useVoice(options:Options) {
   const audio=useRef<HTMLAudioElement|null>(null);
   const generation=useRef(0);
   const abort=useRef<AbortController|null>(null);
+  const cancelPermission=useRef<(()=>void)|null>(null);
   const timers=useRef<ReturnType<typeof setTimeout>[]>([]);
   const stop=useCallback(()=>{
     generation.current++;
+    cancelPermission.current?.();cancelPermission.current=null;
     abort.current?.abort();abort.current=null;
     timers.current.forEach(clearTimeout);timers.current=[];
     channel.current?.close();channel.current=null;
@@ -42,9 +44,20 @@ export function useVoice(options:Options) {
     const token=generation.current;
     const controller=new AbortController();abort.current=controller;
     if(!navigator.mediaDevices?.getUserMedia||typeof RTCPeerConnection==='undefined') {fail('이 브라우저에서는 음성을 사용할 수 없습니다. 텍스트로 계속해주세요.');return false;}
+    const connectTimer=setTimeout(()=>{if(token===generation.current)fail('음성 연결 시간이 초과되었습니다. 다시 시도해주세요.');},30000);
+    timers.current.push(connectTimer);
     try {
-      const media=await navigator.mediaDevices.getUserMedia({audio:true});
-      if(token!==generation.current){media.getTracks().forEach(track=>track.stop());return false;}
+      // The browser may never settle its permission promise. End our wait on
+      // cancellation/deadline, but still release any microphone allowed later.
+      const media=await new Promise<MediaStream|null>((resolve,reject)=>{
+        cancelPermission.current=()=>resolve(null);
+        navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+          if(token!==generation.current){stream.getTracks().forEach(track=>track.stop());resolve(null);}
+          else resolve(stream);
+        },reject);
+      });
+      if(token!==generation.current||!media){media?.getTracks().forEach(track=>track.stop());return false;}
+      cancelPermission.current=null;
       stream.current=media;
       const connection=new RTCPeerConnection();peer.current=connection;
       const speaker=document.createElement('audio');speaker.autoplay=true;audio.current=speaker;
@@ -54,8 +67,6 @@ export function useVoice(options:Options) {
       const seen=new Set<string>();
       let toolRounds=0;
       const send=(event:unknown)=>{if(token===generation.current&&dc.readyState==='open')dc.send(JSON.stringify(event));};
-      const connectTimer=setTimeout(()=>{if(token===generation.current)fail('음성 연결 시간이 초과되었습니다. 다시 시도해주세요.');},30000);
-      timers.current.push(connectTimer);
       dc.onopen=()=>{
         if(token!==generation.current)return;
         clearTimeout(connectTimer);setState('listening');
