@@ -4,7 +4,7 @@ OpenAI는 AI 도움, 사진 분석, 음성 대화에 사용한다. Gemini 사진
 
 ## 키 저장
 
-- 설정에서 개인 OpenAI 키를 등록·변경·삭제한다. 저장 전에 설정된 모델의 접근 권한을 확인한다. 모델 조회 성공이 실제 분석 호출의 잔여 크레딧이나 Realtime 권한까지 보장하지는 않는다.
+- 설정에서 개인 OpenAI 키를 등록·변경·삭제한다. 저장 전에 설정된 대화·사진 모델의 접근 권한을 각각 확인한다. 두 설정이 같은 모델이면 한 번만 조회한다. 모델 조회 성공이 실제 분석 호출의 잔여 크레딧이나 Realtime 권한까지 보장하지는 않는다.
 - OpenAI 키는 `user_ai_credentials`에 AES-256-GCM으로 암호화한다. AAD는 `provider:v1:userId`이며 다른 사용자나 다른 제공자로 복호화할 수 없다. 브라우저 역할은 암호문에도 접근할 수 없다.
 - 기존 `user_gemini_keys`는 호환성을 위해 유지한다. 기존 Gemini 암호문을 새 테이블에 복사하고 기존 테이블의 등록·변경·삭제를 트리거로 원자적으로 동기화한다. AAD를 유지하므로 복호화·재암호화 없이 전환한다. 공통 resolver는 새 테이블을 먼저 확인하고 없으면 기존 테이블을 읽는다.
 - `AI_KEY_ENCRYPTION_SECRET`이 있으면 사용하고, 없으면 기존 `GEMINI_KEY_ENCRYPTION_SECRET`을 사용한다. 새 이름으로 옮길 때 기존 값과 같은 값을 써야 기존 암호문을 읽을 수 있다. 32바이트의 base64 값을 사용한다.
@@ -29,11 +29,13 @@ OpenAI는 AI 도움, 사진 분석, 음성 대화에 사용한다. Gemini 사진
 
 ## 모델·사용량·검증
 
-OpenAI 사진 분석은 Responses API 이미지 입력과 strict JSON Schema를 사용한다. 기본 모델은 `gpt-5.4-mini`이며 `OPENAI_MODEL`로 변경할 수 있다. 응답은 `analysisSchema`로 다시 검증하며 완료되지 않은 응답, 거절, 잘못된 수량은 저장 후보로 사용하지 않는다. `store:false`로 Responses 상태 보관을 요청하지 않지만 공급자의 데이터 처리 정책 자체를 바꾸지는 않는다.
+대화·도구 호출은 `OPENAI_CHAT_MODEL`(기본 `gpt-6-luna`), 사진의 최초 분석과 저장 사진 재분석은 `OPENAI_VISION_MODEL`(기본 `gpt-6.1-terra`)을 사용한다. 각 전용 변수가 없으면 기존 `OPENAI_MODEL`을 사용하고, 그것도 없으면 용도별 기본값을 사용한다. Gemini와 음성 전사·Realtime 모델 설정은 별도로 유지한다.
+
+OpenAI 사진 분석은 Responses API 이미지 입력과 strict JSON Schema를 사용한다. 응답은 `analysisSchema`로 다시 검증하며 완료되지 않은 응답, 거절, 잘못된 수량은 저장 후보로 사용하지 않는다. `store:false`로 Responses 상태 보관을 요청하지 않지만 공급자의 데이터 처리 정책 자체를 바꾸지는 않는다.
 
 사진 분석, 키 저장, 채팅, 음성 세션 시작은 사용자별로 각각 시간당 30회, 도구 호출은 120회 제한한다. 키 확인은 텍스트 생성 없이 모델 메타데이터를 조회한다.
 
-- 단위 검증: `pnpm exec tsx --test tests/provider.test.ts tests/ai-vision.test.ts`
+- 단위 검증: `pnpm exec tsx --test tests/ai-models.test.ts tests/provider.test.ts tests/ai-vision.test.ts`
 - 로컬 API·DB 검증: `RUN_AI_INTEGRATION=1 pnpm exec tsx --test tests/provider.integration.test.ts`
 
-공식 문서 확인: [이미지 입력](https://developers.openai.com/api/docs/guides/images-vision), [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses), [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
+공식 문서 확인: [이미지 입력](https://developers.openai.com/api/docs/guides/images-vision), [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses), [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna), [GPT-6.1 Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra).

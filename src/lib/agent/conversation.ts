@@ -1,4 +1,5 @@
 import { VisionError } from '@/lib/ai/gemini';
+import { openAIChatModel } from '@/lib/ai/models';
 import { agentInstructions, agentTools, toolCallSchema, type AgentReply, type ChatRequest, type ToolName } from './contracts';
 import { displayToolEvents } from './container-lookup';
 
@@ -14,7 +15,7 @@ export async function runConversation(input:ChatRequest, deps:Dependencies):Prom
   for(let round=0;round<5;round++) {
     let response:ModelResponse;
     try {response=await deps.request({
-      model:process.env.OPENAI_MODEL || 'gpt-5.4-mini',
+      model:openAIChatModel(),
       store:false,instructions:agentInstructions(input.context),input:[...history],
       tools:agentTools,parallel_tool_calls:false,max_output_tokens:2500,
     });} catch(error) {
