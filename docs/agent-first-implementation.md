@@ -58,7 +58,7 @@ pnpm audit
 supabase db lint --local --schema public --level error
 ```
 
-최종 검증은 Node 22.18.0 / pnpm 10.10.0에서 수행했다. 마이크 상태 복구, 마크다운, 모델 분리와 장소 계층 조회 수정 후 통합 테스트를 포함한 91개가 모두 통과했다. lint는 오류 0개(기존 ContainerForm의 React Hook Form 경고 1개), production build도 성공했다. `react-markdown`을 추가했으며 `pnpm audit`은 변경 전후 같은 39건(critical 2, high 13, moderate 18, low 6)을 보고했다. 신규 경고는 없고 기존 Next.js를 포함한 의존성 보안 갱신은 남아 있다. DB 마이그레이션은 이번 수정에서 변경하지 않았다.
+최종 검증은 Node 22.18.0 / pnpm 10.10.0에서 수행했다. 의존성 보안 갱신 후 프로덕션 서버를 대상으로 통합 테스트를 포함한 122개가 모두 통과했다. lint는 오류 0개(기존 ContainerForm의 React Hook Form 경고 1개), production build도 성공했다. 전체·프로덕션 의존성 감사는 각각 low 1건이며 critical·high·moderate는 0건이다. 남은 `deepmerge`는 공식 수정 버전이 없어 모든 사용 경로에 로컬 패치를 적용하고 재설치·공격 경로·호환성을 검증했다. 감사 경고는 숨기지 않았다. 단계별 커밋과 남은 경고의 의미는 [보안 수정 보고서](security-remediation.md)에 기록했다. DB 마이그레이션은 이번 수정에서 변경하지 않았다.
 
 통합 테스트는 로컬 Supabase만 허용하고 테스트 계정·사진을 정리한다. 외부 모델을 호출하지 않고 암호화, RLS, 인증·CSRF, 명시적 전체 검색, 준비 단계의 무변경, revision 충돌, 승인값 변조, 중복 확인, 기존 일괄 등록과의 동시성, 삭제 영향 변경, 공유 사진·정리와 사진을 보관한 계정 삭제를 검증한다.
 
