@@ -57,7 +57,7 @@ export async function executeStorageTool(name: ToolName, args: Record<string,unk
         current=await getActionStatus(context.activeActionId);
         if(current.revision!==context.activeActionRevision)throw new VisionError('변경안이 달라졌습니다. 최신 내용을 확인해주세요',409);
       }
-      if(change.type==='register_items'&&current?.status==='prepared'&&current.type==='register_items'&&current.payload.source_photo_id) {
+      if(change.type==='register_items'&&current?.status==='prepared'&&current.type==='register_items'&&current.payload.source_photo_id&&!change.payload.source_photo_id) {
         change.payload.source_photo_id=current.payload.source_photo_id;
       }
       if(change.type==='register_items'&&change.payload.source_photo_id) {

@@ -218,6 +218,18 @@ test("agent HTTP tools enforce auth, ownership, preparation-only writes and phot
     const foreignMediaId = randomUUID();
     assert.ifError((await admin.from("media_assets").insert({ id: foreignMediaId, user_id: b.id, path: `${b.id}/${foreignMediaId}.jpg`, status: "uploaded" })).error);
     await body(await a.tool("prepare_change", { type: "register_items", payload_json: JSON.stringify(photoPayload) }, { ...photoContext, photoDrafts: [{ ...photo, retain: true, media_id: foreignMediaId }] }), 404);
+    const secondPhoto = { ...photo, photo_id: randomUUID(), revision: 7 };
+    const sourceA = retained.result.action as StorageAction;
+    const switched = await body(await a.tool("prepare_change", {
+      type: "register_items",
+      payload_json: JSON.stringify({ source_photo_id: secondPhoto.photo_id, container_id: second.id, items: [{ name: "두 번째 사진 물품", quantity: 1 }] }),
+    }, { ...emptyContext, activeActionId: sourceA.action_id, activeActionRevision: sourceA.revision, photoDrafts: [secondPhoto] }));
+    assert.equal(switched.result.action.action_id, sourceA.action_id);
+    assert.equal(switched.result.action.revision, sourceA.revision + 1);
+    assert.equal(switched.result.action.payload.source_photo_id, secondPhoto.photo_id, "an explicit next photo replaces the previous source correlation");
+    assert.equal(switched.result.action.payload.source_photo_revision, secondPhoto.revision);
+    assert.equal((await a.client.from("items").select("id", { count: "exact" })).count, beforeCount, "switching source photos only changes the proposal");
+    assert.equal((await a.client.from("item_media").select("item_id", { count: "exact" })).count, 0);
     console.log("PASS agent: authenticated tools, same-origin requests, owner isolation, forbidden commits/SQL, global scope, photo correction identity and cancellation");
   } finally {
     for (const id of users) assert.ifError((await admin.auth.admin.deleteUser(id)).error);
