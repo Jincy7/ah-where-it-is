@@ -55,6 +55,102 @@ export type Database = {
         }
         Relationships: []
       }
+      media_deletion_queue: {
+        Row: { path: string; user_id: string; created_at: string }
+        Insert: { path: string; user_id: string; created_at?: string }
+        Update: { path?: string; user_id?: string; created_at?: string }
+        Relationships: []
+      }
+      media_assets: {
+        Row: {
+          id: string
+          user_id: string
+          path: string
+          status: "pending" | "uploaded" | "attached"
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          path: string
+          status?: "pending" | "uploaded" | "attached"
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          path?: string
+          status?: "pending" | "uploaded" | "attached"
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      item_media: {
+        Row: {
+          item_id: string
+          media_id: string
+        }
+        Insert: {
+          item_id: string
+          media_id: string
+        }
+        Update: {
+          item_id?: string
+          media_id?: string
+        }
+        Relationships: []
+      }
+      storage_actions: {
+        Row: {
+          action_id: string
+          user_id: string
+          revision: number
+          type: string
+          payload: Json
+          expected_versions: Json
+          payload_hash: string
+          idempotency_key: string
+          preview: Json
+          status: string
+          receipt: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          action_id?: string
+          user_id: string
+          revision?: number
+          type: string
+          payload: Json
+          expected_versions: Json
+          payload_hash: string
+          idempotency_key: string
+          preview: Json
+          status?: string
+          receipt?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          action_id?: string
+          user_id?: string
+          revision?: number
+          type?: string
+          payload?: Json
+          expected_versions?: Json
+          payload_hash?: string
+          idempotency_key?: string
+          preview?: Json
+          status?: string
+          receipt?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_usage_limits: {
         Row: {
           calls: number
@@ -78,6 +174,9 @@ export type Database = {
       }
       containers: {
         Row: {
+          version: number
+          contents_version: number
+          cover_media_id: string | null
           created_at: string
           id: string
           internal_photo_url: string | null
@@ -87,6 +186,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          version?: number
+          contents_version?: number
+          cover_media_id?: string | null
           created_at?: string
           id?: string
           internal_photo_url?: string | null
@@ -96,6 +198,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          version?: number
+          contents_version?: number
+          cover_media_id?: string | null
           created_at?: string
           id?: string
           internal_photo_url?: string | null
@@ -178,6 +283,7 @@ export type Database = {
       }
       items: {
         Row: {
+          version: number
           container_id: string
           created_at: string
           description: string | null
@@ -187,6 +293,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          version?: number
           container_id: string
           created_at?: string
           description?: string | null
@@ -196,6 +303,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          version?: number
           container_id?: string
           created_at?: string
           description?: string | null
@@ -216,6 +324,7 @@ export type Database = {
       }
       locations: {
         Row: {
+          version: number
           created_at: string
           description: string | null
           id: string
@@ -224,6 +333,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          version?: number
           created_at?: string
           description?: string | null
           id?: string
@@ -232,6 +342,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          version?: number
           created_at?: string
           description?: string | null
           id?: string
@@ -421,6 +532,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      confirm_storage_action: {
+        Args: { p_action_id: string; p_revision: number; p_payload_hash: string; p_idempotency_key: string }
+        Returns: Json
+      }
+      claim_orphaned_media: {
+        Args: { p_user_id: string }
+        Returns: { path: string }[]
+      }
+
       consume_ai_quota: {
         Args: { p_user_id: string; p_scope: string }
         Returns: boolean
