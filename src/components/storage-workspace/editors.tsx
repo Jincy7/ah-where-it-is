@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -72,13 +72,19 @@ export function ContainerEditor({ container, locations, prepare, onPrepared }: {
   const [removePhoto, setRemovePhoto] = useState(false)
   const [busy, setBusy] = useState(false)
   const [mediaId, setMediaId] = useState<string | null>(null)
+  const request = useRef<AbortController | null>(null)
+  useEffect(() => () => { request.current?.abort(); request.current = null }, [])
   async function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (request.current) return
+    const controller = new AbortController()
+    request.current = controller
     setBusy(true)
     try {
       let cover = mediaId
       if (photo && !cover) {
-        const result = await storageRequest<{ media: { id: string } }>('/api/storage/media', { method: 'POST', headers: { 'Content-Type': photo.type }, body: photo })
+        const result = await storageRequest<{ media: { id: string } }>('/api/storage/media', { method: 'POST', headers: { 'Content-Type': photo.type }, body: photo, signal: controller.signal })
+        if (controller.signal.aborted) return
         cover = result.media.id
         setMediaId(cover)
       }
@@ -86,10 +92,10 @@ export function ContainerEditor({ container, locations, prepare, onPrepared }: {
       if (container) payload.container_id = container.id
       if (cover || removePhoto) payload.cover_media_id = removePhoto ? null : cover
       await prepare(container ? 'update_container' : 'create_container', payload, container ? { [`containers:${container.id}`]: container.version } : undefined)
-      onPrepared()
+      if (!controller.signal.aborted) onPrepared()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '변경안을 만들지 못했습니다')
-    } finally { setBusy(false) }
+      if (!controller.signal.aborted) toast.error(error instanceof Error ? error.message : '변경안을 만들지 못했습니다')
+    } finally { if (request.current === controller) { request.current = null; setBusy(false) } }
   }
   return <form onSubmit={submit} className="space-y-4">
     <div className="space-y-2"><Label htmlFor="container-name">보관함 이름 *</Label><Input id="container-name" value={name} onChange={e => setName(e.target.value)} placeholder="예: 책상 서랍" maxLength={100} required disabled={busy} /></div>
