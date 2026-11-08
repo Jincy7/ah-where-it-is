@@ -5,7 +5,7 @@
 ## 적용 순서
 
 1. Node 22, pnpm 10.10.0 환경에서 기존 로컬 인프라를 시작한다.
-2. `supabase migration up --local`로 `00008_ai_providers.sql`, `00009_storage_actions.sql`, `00010_media_owner_cleanup.sql`, `00011_transcription_quota.sql`, `00012_bulk_item_move.sql`을 적용한다. 운영에는 배포 전 다섯 마이그레이션을 순서대로 별도 적용해야 한다. 이번 작업은 운영 DB를 변경하지 않았다.
+2. `supabase migration up --local`로 `00008`부터 `00013_preserve_omitted_update_fields.sql`까지 여섯 마이그레이션을 순서대로 적용합니다. 운영 DB에도 앱 배포 전에 같은 순서로 적용해야 합니다. 운영 DB는 이번 작업에서 변경하지 않았습니다.
 3. 서버의 `SUPABASE_SERVICE_ROLE_KEY`와 기존 `GEMINI_KEY_ENCRYPTION_SECRET`를 유지한다. 공통 이름 `AI_KEY_ENCRYPTION_SECRET`도 지원하지만 기존 암호문을 읽으려면 동일한 32바이트 base64 비밀값이어야 한다.
 4. 설정에서 개인 OpenAI 키를 등록한다. `.env.local`의 `OPENAI_API_KEY`는 로컬 개발 앱·로컬 Supabase에서만 **개발용 키 가져오기**로 로그인한 사용자에게 암호화 저장할 수 있다. 환경 키를 배포 사용자에게 자동 공유하지 않는다.
 
@@ -48,6 +48,8 @@
 Realtime은 서버에서 사용자 키를 복호화해 SDP를 교환한다. 브라우저에는 일반 키를 전달하지 않는다. 음성 도구는 같은 인증·소유권·변경 계약을 사용한다. 종료·실패·보기 전환 시 오디오 트랙을 정리하고 사진·대화 초안을 유지한다. 연결은 10분 후 종료하며 도구 호출 반복에도 상한을 둔다.
 
 ## 검증
+
+PR 직전 검증은 커밋된 소스만 사용했으며 전체 136개 테스트, lint와 프로덕션 빌드를 통과했습니다. 추가 수정과 배포 조건은 [머지 전 검증 기록](pr-merge-verification.md)에 정리했습니다. 아래 122개 결과는 이전 작업 시점의 기록입니다.
 
 ```sh
 pnpm test
