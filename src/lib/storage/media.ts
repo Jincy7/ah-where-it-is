@@ -52,7 +52,10 @@ export async function cleanupMedia() {
   if (!paths.length) return { removed: 0 };
   const removed = await admin.storage.from("item-images").remove(paths);
   if (removed.error) throw new VisionError("사진 정리를 마치지 못했습니다. 다시 시도해주세요",503);
-  const cleared = await admin.from("media_deletion_queue").delete().eq("user_id",user.id).in("path",paths);
-  if (cleared.error) throw new VisionError("사진 정리 결과를 확인하지 못했습니다",503);
+  // Paths contain two UUIDs, so a 100-path filter exceeds the gateway URL limit.
+  for (let offset = 0; offset < paths.length; offset += 50) {
+    const cleared = await admin.from("media_deletion_queue").delete().eq("user_id",user.id).in("path",paths.slice(offset, offset + 50));
+    if (cleared.error) throw new VisionError("사진 정리 결과를 확인하지 못했습니다",503);
+  }
   return { removed: paths.length };
 }

@@ -8,6 +8,9 @@ import { actionPayloadSchemas, canonicalJson, changeSchema, confirmationSchema }
 import type { ChangeInput, StorageAction, StorageContainer, StorageItem, StorageLocation, StorageLocationSummary, WorkspaceData } from "./types";
 import { LOCATION_ITEM_LIMIT, locationContents, summarizeLocations } from "./location-lookup";
 
+// PostgREST puts filters in the URL; 100 UUIDs stay below the gateway's 8 KiB limit.
+const MEDIA_ID_BATCH_SIZE = 100;
+
 export async function storageContext() {
   const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -26,12 +29,15 @@ async function mediaUrls(ids: string[]) {
   const urls = new Map<string, string | null>();
   if (!unique.length) return urls;
   const { supabase, user } = await storageContext();
-  const { data, error } = await supabase.from("media_assets").select("id,path").eq("user_id", user.id).in("id", unique);
-  databaseError(error);
-  if (data?.length) {
-    const signed = await supabase.storage.from("item-images").createSignedUrls(data.map((m) => m.path), 600);
-    databaseError(signed.error);
-    data.forEach((m, i) => urls.set(m.id, signed.data?.[i]?.signedUrl ?? null));
+  for (let offset = 0; offset < unique.length; offset += MEDIA_ID_BATCH_SIZE) {
+    const ids = unique.slice(offset, offset + MEDIA_ID_BATCH_SIZE);
+    const { data, error } = await supabase.from("media_assets").select("id,path").eq("user_id", user.id).in("id", ids);
+    databaseError(error);
+    if (data?.length) {
+      const signed = await supabase.storage.from("item-images").createSignedUrls(data.map((m) => m.path), 600);
+      databaseError(signed.error);
+      data.forEach((m, i) => urls.set(m.id, signed.data?.[i]?.signedUrl ?? null));
+    }
   }
   return urls;
 }
@@ -87,12 +93,14 @@ export async function searchItems(query = "", containerId?: string, locationId?:
   if (query.length > 200) throw new VisionError("검색어는 200자 이내로 입력해주세요", 400);
   const containers = await listContainers();
   if (containerId && !containers.some((c) => c.id === containerId)) throw new VisionError("보관함을 찾을 수 없습니다", 404);
-  let request = supabase.from("items").select("*").order("updated_at", { ascending: false }).limit(LOCATION_ITEM_LIMIT);
+  // Embed links per item so neither a long ID filter nor a separate 1000-row
+  // link query can drop photos. The empty parent embed only filters location.
+  let request = supabase.from("items").select("*,item_media(media_id),containers!inner()").order("updated_at", { ascending: false }).limit(LOCATION_ITEM_LIMIT);
   if (containerId) request = request.eq("container_id", containerId);
   if (locationId) {
     const children = containers.filter(container => container.location_id === locationId);
     if (!children.length) return [];
-    request = request.in("container_id", children.map(container => container.id));
+    request = request.eq("containers.location_id", locationId);
   }
   const trimmed = query.trim();
   const tokens = [...new Set(trimmed.split(/\s+/).filter(Boolean))].slice(0,20);
@@ -103,13 +111,11 @@ export async function searchItems(query = "", containerId?: string, locationId?:
   const { data, error } = await request;
   databaseError(error, "검색에 실패했습니다. 다시 시도해주세요");
   const rows = data ?? [];
-  const links = rows.length ? await supabase.from("item_media").select("item_id,media_id").in("item_id", rows.map((i) => i.id)) : { data: [], error: null };
-  databaseError(links.error);
-  const urls = await mediaUrls((links.data ?? []).map((l) => l.media_id));
+  const urls = await mediaUrls(rows.flatMap((item) => item.item_media.map((link) => link.media_id)));
   const containerMap = new Map(containers.map((c) => [c.id, c]));
-  return rows.map((item) => {
+  return rows.map(({ item_media: links, ...item }) => {
     const container = containerMap.get(item.container_id);
-    return { ...item, container_name: container?.name ?? "보관함", location_name: container?.location_name ?? null, match_reason: trimmed ? (tokens.every((token) => item.name.toLocaleLowerCase().includes(token.toLocaleLowerCase())) ? `물품명에 ‘${tokens.join(" · ")}’ 포함` : `물품명·설명에 ‘${tokens.join(" · ")}’ 포함`) : "등록된 기록", media: (links.data ?? []).filter((l) => l.item_id === item.id).map((l) => ({ id: l.media_id, url: urls.get(l.media_id) ?? null })) };
+    return { ...item, container_name: container?.name ?? "보관함", location_name: container?.location_name ?? null, match_reason: trimmed ? (tokens.every((token) => item.name.toLocaleLowerCase().includes(token.toLocaleLowerCase())) ? `물품명에 ‘${tokens.join(" · ")}’ 포함` : `물품명·설명에 ‘${tokens.join(" · ")}’ 포함`) : "등록된 기록", media: links.map((link) => ({ id: link.media_id, url: urls.get(link.media_id) ?? null })) };
   });
 }
 export async function getContainer(containerId: string) {
@@ -218,10 +224,11 @@ export async function prepareChange(input: ChangeInput): Promise<StorageAction> 
     ...(payload.cover_media_id ? [String(payload.cover_media_id)] : []),
     ...(type === "register_items" ? (payload.items as { media_ids?: string[] }[]).flatMap((i) => i.media_ids ?? []) : []),
   ])];
-  if (mediaIds.length) {
-    const { data, error } = await supabase.from("media_assets").select("id").eq("user_id", user.id).in("status", ["uploaded", "attached"]).in("id", mediaIds);
+  for (let offset = 0; offset < mediaIds.length; offset += MEDIA_ID_BATCH_SIZE) {
+    const ids = mediaIds.slice(offset, offset + MEDIA_ID_BATCH_SIZE);
+    const { data, error } = await supabase.from("media_assets").select("id").eq("user_id", user.id).in("status", ["uploaded", "attached"]).in("id", ids);
     databaseError(error);
-    if (data?.length !== mediaIds.length) throw new VisionError("등록 사진을 찾을 수 없습니다. 다시 선택해주세요", 404);
+    if (data?.length !== ids.length) throw new VisionError("등록 사진을 찾을 수 없습니다. 다시 선택해주세요", 404);
   }
   for (const [key, version] of Object.entries(parsed.data.expected_versions ?? {})) {
     if (expected[key] !== version) throw new VisionError("기록이 변경되었습니다. 최신 내용을 불러온 후 다시 수정해주세요", 409);

@@ -101,7 +101,22 @@ export type Database = {
           item_id?: string
           media_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "item_media_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "item_media_media_id_fkey"
+            columns: ["media_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       storage_actions: {
         Row: {
