@@ -8,7 +8,7 @@ const description = z.string().max(1000).optional();
 const containerFields = { name, location_id: id.nullable().optional(), cover_media_id: id.nullable().optional() };
 const locationFields = { name, description };
 export const actionPayloadSchemas = {
-  register_items: z.object({ container_id: id, source_photo_id: id.optional(), items: z.array(itemSchema.extend({ media_ids: z.array(id).max(10).optional() })).min(1).max(100) }).strict(),
+  register_items: z.object({ container_id: id, source_photo_id: id.optional(), source_photo_revision: z.number().int().positive().optional(), items: z.array(itemSchema.extend({ media_ids: z.array(id).max(10).optional() })).min(1).max(100) }).strict(),
   update_item: z.object({ item_id: id, name, quantity: z.number().int().min(1).max(9999), description }).strict(),
   move_item: z.object({ item_id: id, container_id: id }).strict(),
   delete_item: z.object({ item_id: id }).strict(),
