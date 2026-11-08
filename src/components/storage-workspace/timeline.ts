@@ -2,7 +2,7 @@ import type { StorageAction, WorkspaceItem } from '@/lib/storage/types'
 
 export type ChatEntry =
   | { id: string; kind: 'message'; role: 'user' | 'assistant'; content: string }
-  | { id: string; kind: 'results'; items: WorkspaceItem[]; title?: string }
+  | { id: string; kind: 'results'; items: WorkspaceItem[]; title?: string; containerId?: string }
   | { id: string; kind: 'action'; actionId: string }
   | { id: string; kind: 'photos' }
 
@@ -37,6 +37,6 @@ export function refreshConversationResults(entries: ChatEntry[], items: Workspac
   const current = new Map(items.map(item => [item.id, item]))
   const deleted = new Set(deletedIds)
   return entries.map(entry => entry.kind === 'results'
-    ? { ...entry, items: entry.items.filter(item => !deleted.has(item.id)).map(item => current.get(item.id) ?? item) }
+    ? { ...entry, items: entry.containerId ? items.filter(item => item.container_id === entry.containerId && !deleted.has(item.id)) : entry.items.filter(item => !deleted.has(item.id)).map(item => current.get(item.id) ?? item) }
     : entry)
 }

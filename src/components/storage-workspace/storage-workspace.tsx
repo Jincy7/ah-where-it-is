@@ -86,8 +86,8 @@ export function StorageWorkspace() {
     if (message.role === 'user') followBottom.current = true
     setConversation(previous => ({ ...previous, entries: [...previous.entries, { ...message, kind: 'message' }] }))
   }, [])
-  const appendResults = useCallback((items: WorkspaceItem[], title = '찾은 기록') => {
-    setConversation(previous => ({ ...previous, entries: [...previous.entries, { id: crypto.randomUUID(), kind: 'results', items, title }] }))
+  const appendResults = useCallback((items: WorkspaceItem[], title = '찾은 기록', containerId?: string) => {
+    setConversation(previous => ({ ...previous, entries: [...previous.entries, { id: crypto.randomUUID(), kind: 'results', items, title, containerId }] }))
   }, [])
   const activatePhotos = useCallback(() => {
     if (!photoActiveRef.current) {
@@ -127,7 +127,7 @@ export function StorageWorkspace() {
   useEffect(() => {
     if (!selected || lastInventoryId.current === selected.id) return
     lastInventoryId.current = selected.id
-    appendResults(data?.items.filter(item => item.container_id === selected.id) ?? [], `${selected.name}의 기록`)
+    appendResults(data?.items.filter(item => item.container_id === selected.id) ?? [], `${selected.name}의 기록`, selected.id)
   }, [selected, data, appendResults])
   useEffect(() => {
     if (!urlQuery.trim()) return
@@ -303,7 +303,7 @@ export function StorageWorkspace() {
       <div className="space-y-6">{conversation.entries.map(entry => {
         if (entry.kind === 'photos') return <div key={entry.id} hidden={!photosActive}><PhotoRegistration ref={photoRef} containers={containers} containerId={registrationContainerId} onContainerChange={setRegistrationContainerId} existingNames={(data?.items ?? []).filter(item => item.container_id === registrationContainerId).map(item => item.name)} prepare={prepare} action={action} locked={storageLocked} interactionLocked={assistantBusy} onDraftsChange={receivePhotoDrafts} draftUpdate={photoDraftUpdate} onPhotosAdded={activatePhotos} /></div>
         if (entry.kind === 'message') return <div key={entry.id} className={entry.role === 'user' ? 'ml-auto w-fit max-w-[88%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-4 py-3 text-sm' : 'max-w-full whitespace-pre-wrap break-words py-1 text-sm leading-relaxed'}><span className="sr-only">{entry.role === 'user' ? '나' : '보관 도우미'}: </span>{entry.content}</div>
-        if (entry.kind === 'results') return <ResultsCard key={entry.id} items={entry.items} title={entry.title} locked={locked} onEdit={item => openEditor({ kind: 'item', item })} onMove={item => openEditor({ kind: 'move', item })} onDelete={item => void requestDelete('delete_item', item)} />
+        if (entry.kind === 'results') return <ResultsCard key={entry.id} items={entry.items} title={entry.title} emptyMessage={entry.containerId ? '이 보관함에 등록된 물품이 없어요.' : undefined} locked={locked} onEdit={item => openEditor({ kind: 'item', item })} onMove={item => openEditor({ kind: 'move', item })} onDelete={item => void requestDelete('delete_item', item)} />
         const entryAction = conversation.actions[entry.actionId]
         if (!entryAction) return null
         const active = entry.actionId === conversation.activeActionId

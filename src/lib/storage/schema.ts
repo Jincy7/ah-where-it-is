@@ -11,6 +11,7 @@ export const actionPayloadSchemas = {
   register_items: z.object({ container_id: id, source_photo_id: id.optional(), source_photo_revision: z.number().int().positive().optional(), items: z.array(itemSchema.extend({ media_ids: z.array(id).max(10).optional() })).min(1).max(100) }).strict(),
   update_item: z.object({ item_id: id, name, quantity: z.number().int().min(1).max(9999), description }).strict(),
   move_item: z.object({ item_id: id, container_id: id }).strict(),
+  move_items: z.object({ source_container_id: id, container_id: id }).strict().refine(value => value.source_container_id !== value.container_id, "다른 보관함을 선택해주세요"),
   delete_item: z.object({ item_id: id }).strict(),
   create_container: z.object(containerFields).strict(),
   update_container: z.object({ container_id: id, ...containerFields }).strict(),
@@ -20,7 +21,7 @@ export const actionPayloadSchemas = {
   delete_location: z.object({ location_id: id }).strict(),
 };
 export const changeSchema = z.object({
-  type: z.enum(["register_items", "update_item", "move_item", "delete_item", "create_container", "update_container", "delete_container", "create_location", "update_location", "delete_location"]),
+  type: z.enum(["register_items", "update_item", "move_item", "move_items", "delete_item", "create_container", "update_container", "delete_container", "create_location", "update_location", "delete_location"]),
   payload: z.record(z.unknown()),
   action_id: id.optional(),
   revision: z.number().int().positive().optional(),

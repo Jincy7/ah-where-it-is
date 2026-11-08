@@ -127,6 +127,29 @@ export async function prepareChange(input: ChangeInput): Promise<StorageAction> 
     expected[`locations:${id}`] = data.version;
     return data;
   }
+  async function completeContents(containerId: string) {
+    const first = await supabase.from("items").select("id,name,quantity,version", { count: "exact" }).eq("container_id",containerId).order("id").range(0,999);
+    databaseError(first.error);
+    const rows = first.data ?? [];
+    const total = first.count ?? rows.length;
+    if (total > 10000) throw new VisionError("한 번에 10000종까지 확인할 수 있습니다. 물품을 나누어 정리해주세요",422);
+    for (let offset=1000; offset<total; offset+=1000) {
+      const page = await supabase.from("items").select("id,name,quantity,version").eq("container_id",containerId).order("id").range(offset,offset+999);
+      databaseError(page.error); rows.push(...(page.data ?? []));
+    }
+    if (rows.length !== total || new Set(rows.map(row => row.id)).size !== total) throw new VisionError("내용물이 변경되었습니다. 최신 내용으로 다시 확인해주세요",409);
+    return rows;
+  }
+  if (type === "move_items") {
+    const source = await container(String(payload.source_container_id));
+    expected[`contents:${source.id}`] = source.contents_version;
+    const rows = await completeContents(source.id);
+    if (!rows.length) throw new VisionError("출발 보관함에 이동할 물품이 없습니다",422);
+    for (const item of rows) expected[`items:${item.id}`] = item.version;
+    affected = rows.map(({id,name,quantity}) => ({id,name,quantity}));
+    before = { container_id: source.id, container_name: source.name, item_count: rows.length };
+    if (after) after.item_count = rows.length;
+  }
   if (payload.item_id) {
     const { data, error } = await supabase.from("items").select("*").eq("id", String(payload.item_id)).maybeSingle();
     databaseError(error);
@@ -142,16 +165,8 @@ export async function prepareChange(input: ChangeInput): Promise<StorageAction> 
     if (after) after.container_name = target.name;
     if (type === "delete_container") {
       expected[`contents:${target.id}`] = target.contents_version;
-      const { data, error, count } = await supabase.from("items").select("id,name,quantity", { count: "exact" }).eq("container_id", target.id).order("id").range(0,999);
-      databaseError(error); affected = data ?? [];
-      const total = count ?? affected.length;
-      if (total > 10000) throw new VisionError("물품이 많은 보관함입니다. 물품을 나누어 정리한 후 삭제해주세요", 422);
-      for (let offset = 1000; offset < total; offset += 1000) {
-        const page = await supabase.from("items").select("id,name,quantity").eq("container_id",target.id).order("id").range(offset,offset+999);
-        databaseError(page.error); affected.push(...(page.data ?? []));
-      }
-      if (affected.length !== total) throw new VisionError("내용물이 변경되었습니다. 최신 내용으로 다시 확인해주세요",409);
-      before = { ...before, item_count: total };
+      affected = (await completeContents(target.id)).map(({id,name,quantity}) => ({id,name,quantity}));
+      before = { ...before, item_count: affected.length };
     }
   }
   if (payload.location_id) {
@@ -177,7 +192,7 @@ export async function prepareChange(input: ChangeInput): Promise<StorageAction> 
   for (const [key, version] of Object.entries(parsed.data.expected_versions ?? {})) {
     if (expected[key] !== version) throw new VisionError("기록이 변경되었습니다. 최신 내용을 불러온 후 다시 수정해주세요", 409);
   }
-  const titles: Record<string, string> = { register_items: "물품 등록", update_item: "물품 수정", move_item: "물품 이동", delete_item: "물품 삭제", create_container: "보관함 만들기", update_container: "보관함 수정", delete_container: "보관함과 포함 물품 삭제", create_location: "장소 만들기", update_location: "장소 수정", delete_location: "장소 삭제 (보관함은 유지)" };
+  const titles: Record<string, string> = { register_items: "물품 등록", update_item: "물품 수정", move_item: "물품 이동", move_items: "보관함 물품 모두 이동", delete_item: "물품 삭제", create_container: "보관함 만들기", update_container: "보관함 수정", delete_container: "보관함과 포함 물품 삭제", create_location: "장소 만들기", update_location: "장소 수정", delete_location: "장소 삭제 (보관함은 유지)" };
   const preview = { title: titles[type], before, after, affected_items: affected };
   const revision = (parsed.data.revision ?? 0) + 1;
   const actionId = parsed.data.action_id ?? randomUUID();

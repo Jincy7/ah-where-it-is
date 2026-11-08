@@ -10,13 +10,20 @@ import { cancelChange, getActionStatus, getContainer, listContainers, prepareCha
 import { changeSchema } from '@/lib/storage/schema';
 import { VisionError } from '@/lib/ai/gemini';
 import type { AgentContext, ToolName } from './contracts';
+import { matchContainerNames } from './container-lookup';
 
 const id = z.string().uuid();
 export async function executeStorageTool(name: ToolName, args: Record<string,unknown>, context:AgentContext) {
   switch(name) {
     case 'search_items': {
       const input=z.object({query:z.string().trim().min(1).max(100),container_id:id.nullable()}).strict().parse(args);
-      return {items:await searchItems(input.query,input.container_id ?? undefined)};
+      const items=await searchItems(input.query,input.container_id ?? undefined);
+      if(items.length)return {items};
+      const matches=matchContainerNames(input.query,await listContainers());
+      return matches.length ? {
+        items, container_matches: matches.map(container=>({id:container.id,name:container.name,location_name:container.location_name,item_count:container.item_count})),
+        hint:'물품 검색 결과는 없지만 이름이 일치하는 보관함이 있습니다. 보관함이 없다고 답하지 마세요. get_container로 내용물을 조회하고, 여러 후보가 있으면 사용자에게 구분을 요청하세요.',
+      } : {items};
     }
     case 'list_containers':
       z.object({}).strict().parse(args);

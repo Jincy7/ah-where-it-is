@@ -61,3 +61,16 @@ test('late status of a superseded prepared action never steals the current actio
   state = receiveConversationAction(state, action('a', 2, 'cancelled'))
   assert.equal(receiveConversationAction(state, action('a', 3)), state)
 })
+
+test('a container inventory becomes empty after its items move while search cards keep the updated location', () => {
+  const before = item('moved');
+  const after = { ...before, container_id: 'destination', container_name: '책상 보관함' };
+  const entries = [
+    { id: 'inventory', kind: 'results' as const, containerId: before.container_id, items: [before] },
+    { id: 'search', kind: 'results' as const, items: [before] },
+  ];
+  const refreshed = refreshConversationResults(entries, [after]);
+  if (refreshed[0].kind !== 'results' || refreshed[1].kind !== 'results') assert.fail('Expected result entries');
+  assert.deepEqual(refreshed[0].items, []);
+  assert.equal(refreshed[1].items[0].container_name, '책상 보관함');
+});

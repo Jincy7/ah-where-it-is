@@ -20,3 +20,11 @@ test("canonical payload hashing preserves array order and ignores object inserti
   assert.notEqual(canonicalJson({items:[1,2]}),canonicalJson({items:[2,1]}));
   assert.equal(canonicalJson({a:undefined,b:null}),'{"b":null}');
 });
+
+test("whole-container moves require distinct owned IDs and reject client-selected subsets", () => {
+  const source = randomUUID(), destination = randomUUID();
+  assert.equal(actionPayloadSchemas.move_items.safeParse({ source_container_id: source, container_id: destination }).success, true);
+  assert.equal(actionPayloadSchemas.move_items.safeParse({ source_container_id: source, container_id: source }).success, false);
+  assert.equal(actionPayloadSchemas.move_items.safeParse({ source_container_id: source, container_id: destination, item_ids: [randomUUID()] }).success, false);
+  assert.equal(actionPayloadSchemas.move_items.safeParse({ source_container_id: source }).success, false);
+});

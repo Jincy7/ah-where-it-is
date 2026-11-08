@@ -26,7 +26,7 @@ export type WorkspaceData = {
   truncated: boolean;
 };
 export type ChangeType =
-  | "register_items" | "update_item" | "move_item" | "delete_item"
+  | "register_items" | "update_item" | "move_item" | "move_items" | "delete_item"
   | "create_container" | "update_container" | "delete_container"
   | "create_location" | "update_location" | "delete_location";
 export type ActionPayload = Record<string, unknown>;
