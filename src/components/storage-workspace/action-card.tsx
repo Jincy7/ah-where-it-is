@@ -24,13 +24,14 @@ function Summary({ value, containers, locations, type }: { value: Record<string,
   })}</dl>
 }
 
-export function ActionCard({ action, containers, locations, busy, uncertain, error, onConfirm, onCancel, onRefresh, onReprepare, onDismiss }: {
+export function ActionCard({ action, containers, locations, busy, uncertain, error, interactive = true, onConfirm, onCancel, onRefresh, onReprepare, onDismiss }: {
   action: StorageAction
   containers: WorkspaceContainer[]
   locations: WorkspaceLocation[]
   busy: boolean
   uncertain: boolean
   error: string
+  interactive?: boolean
   onConfirm: () => Promise<void>
   onCancel: () => Promise<void>
   onRefresh: () => Promise<void>
@@ -40,10 +41,15 @@ export function ActionCard({ action, containers, locations, busy, uncertain, err
   const [deleteOpen, setDeleteOpen] = useState(false)
   const destructive = action.type.startsWith('delete_')
   const completed = action.status === 'completed'
-  return <section className={`space-y-4 rounded-lg border bg-card p-4 sm:p-6 ${completed ? 'border-primary/40' : ''}`} aria-labelledby="action-heading">
-    <div className="flex items-start justify-between gap-3"><div className="space-y-1"><h2 id="action-heading" className="flex items-center gap-2 text-xl font-semibold">{completed ? <CheckCircle2 className="size-5 text-primary" /> : destructive ? <AlertTriangle className="size-5 text-destructive" /> : <Check className="size-5" />}{completed ? '변경 완료' : action.preview.title}</h2><p className="text-xs text-muted-foreground">{completed ? '저장 결과를 확인했습니다.' : '아래 내용을 확인한 뒤 버튼을 눌러 확정하세요.'}</p></div><Badge variant="outline">{action.status === 'cancelled' ? '취소됨' : completed ? '저장됨' : `확인 대기 · ${action.revision}차`}</Badge></div>
+  if (action.status !== 'prepared' || !interactive) return <section className="space-y-2 rounded-2xl border bg-card px-4 py-3" aria-label={completed ? '변경 완료' : action.status === 'cancelled' ? '변경 취소' : '이전 변경안'}>
+    <p className="flex items-center gap-2 text-sm font-medium">{completed ? <CheckCircle2 className="size-4 text-primary" /> : <X className="size-4 text-muted-foreground" />}{action.preview.title} · {completed ? '완료' : action.status === 'cancelled' ? '취소됨' : '이전 변경안'}</p>
+    <p className="text-xs text-muted-foreground">{completed ? '저장된 기록에 반영했습니다.' : action.status === 'cancelled' ? '기록을 변경하지 않았습니다.' : '현재 변경안에서 이어서 확인해주세요.'}</p>
+    <details className="text-xs text-muted-foreground"><summary className="cursor-pointer py-1">내용 보기</summary><div className="mt-2 space-y-3"><Summary value={action.preview.before} containers={containers} locations={locations} type={action.type} />{action.preview.after && <Summary value={action.preview.after} containers={containers} locations={locations} type={action.type} />}</div></details>
+  </section>
+  return <section className="space-y-4 rounded-2xl border bg-card p-4" aria-labelledby={`action-heading-${action.action_id}`}>
+    <div className="flex items-start justify-between gap-3"><div className="space-y-1"><h2 id={`action-heading-${action.action_id}`} className="flex items-center gap-2 text-base font-semibold">{completed ? <CheckCircle2 className="size-5 text-primary" /> : destructive ? <AlertTriangle className="size-5 text-destructive" /> : <Check className="size-5" />}{completed ? '변경 완료' : action.preview.title}</h2><p className="text-xs text-muted-foreground">{completed ? '저장 결과를 확인했습니다.' : '아래 내용을 확인한 뒤 버튼을 눌러 확정하세요.'}</p></div><Badge variant="outline">{`확인 대기 · ${action.revision}차`}</Badge></div>
     <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">현재 기록</p><Summary value={action.preview.before} containers={containers} locations={locations} type={action.type} /></div><div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">{destructive ? '삭제 후' : '변경 후'}</p><Summary value={action.preview.after} containers={containers} locations={locations} type={action.type} /></div></div>
-    {action.preview.affected_items.length > 0 && <div className="space-y-2 rounded-md bg-muted p-3"><p className="text-sm font-medium">{destructive ? '함께 삭제될 물품' : '대상 물품'} {action.preview.affected_items.length}종</p><ul className="max-h-40 space-y-1 overflow-y-auto text-sm">{action.preview.affected_items.map(item => <li key={item.id}>{item.name} · {item.quantity}개</li>)}</ul></div>}
+    {action.preview.affected_items.length > 0 && <div className="space-y-2 rounded-md bg-muted p-3"><p className="text-sm font-medium">{destructive ? '함께 삭제될 물품' : '대상 물품'} {action.preview.affected_items.length}종</p><details><summary className="cursor-pointer text-xs text-muted-foreground">물품 목록 보기</summary><ul className="mt-2 space-y-1 text-sm">{action.preview.affected_items.map(item => <li key={item.id}>{item.name} · {item.quantity}개</li>)}</ul></details></div>}
     {destructive && !completed && <p className="text-sm text-destructive">삭제한 기록은 되돌릴 수 없습니다. 위 영향 범위를 확인해주세요.</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {error && !uncertain && action.status === 'prepared' && <Button variant="outline" disabled={busy} onClick={() => void onReprepare()}><RefreshCw className="size-4" />최신 기록으로 변경안 다시 만들기</Button>}

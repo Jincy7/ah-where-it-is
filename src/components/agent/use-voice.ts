@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { agentInstructions, type AgentContext, type ToolEvent } from '@/lib/agent/contracts';
 
 type VoiceState='idle'|'connecting'|'listening'|'working'|'speaking'|'error';
@@ -29,22 +29,22 @@ export function useVoice(options:Options) {
     setState('idle');setMuted(false);
   },[]);
   const fail=useCallback((message:string)=>{stop();setError(message);setState('error');},[stop]);
+  useLayoutEffect(()=>{current.current=options;});
   useEffect(()=>{
-    current.current=options;
     if(channel.current?.readyState==='open') channel.current.send(JSON.stringify({type:'session.update',session:{type:'realtime',instructions:agentInstructions(options.context)}}));
-  },[options]);
+  },[options.context]);
   useEffect(()=>{if(!options.active) stop();},[options.active,stop]);
   useEffect(()=>stop,[stop]);
 
   const start=useCallback(async()=>{
-    if(!current.current.active)return;
+    if(!current.current.active)return false;
     stop();setError('');setState('connecting');
     const token=generation.current;
     const controller=new AbortController();abort.current=controller;
-    if(!navigator.mediaDevices?.getUserMedia||typeof RTCPeerConnection==='undefined') {fail('이 브라우저에서는 음성을 사용할 수 없습니다. 텍스트로 계속해주세요.');return;}
+    if(!navigator.mediaDevices?.getUserMedia||typeof RTCPeerConnection==='undefined') {fail('이 브라우저에서는 음성을 사용할 수 없습니다. 텍스트로 계속해주세요.');return false;}
     try {
       const media=await navigator.mediaDevices.getUserMedia({audio:true});
-      if(token!==generation.current){media.getTracks().forEach(track=>track.stop());return;}
+      if(token!==generation.current){media.getTracks().forEach(track=>track.stop());return false;}
       stream.current=media;
       const connection=new RTCPeerConnection();peer.current=connection;
       const speaker=document.createElement('audio');speaker.autoplay=true;audio.current=speaker;
@@ -101,13 +101,14 @@ export function useVoice(options:Options) {
         send({type:'response.create'});
       };
       const offer=await connection.createOffer();await connection.setLocalDescription(offer);
-      if(token!==generation.current)return;
+      if(token!==generation.current)return false;
       const result=await fetch('/api/agent/realtime',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sdp:offer.sdp,context:current.current.context}),signal:controller.signal});
       if(!result.ok){const body=await result.json();throw new Error(body.error||'음성 연결에 실패했습니다');}
       const sdp=await result.text();
-      if(token!==generation.current)return;
+      if(token!==generation.current)return false;
       await connection.setRemoteDescription({type:'answer',sdp});
-    }catch(reason){if(token===generation.current)fail(reason instanceof DOMException&&reason.name==='NotAllowedError'?'마이크 권한이 필요합니다. 브라우저 설정에서 허용하거나 텍스트로 계속해주세요.':reason instanceof Error?reason.message:'음성을 연결하지 못했습니다.');}
+      return token===generation.current;
+    }catch(reason){if(token===generation.current)fail(reason instanceof DOMException&&reason.name==='NotAllowedError'?'마이크 권한이 필요합니다. 브라우저 설정에서 허용하거나 텍스트로 계속해주세요.':reason instanceof Error?reason.message:'음성을 연결하지 못했습니다.');return false;}
   },[fail,stop]);
   const toggleMute=()=>{const next=!muted;stream.current?.getAudioTracks().forEach(track=>track.enabled=!next);setMuted(next);};
   return {state,error,muted,start,stop,toggleMute};

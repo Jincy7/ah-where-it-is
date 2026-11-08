@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Camera, ImagePlus, Loader2, ScanLine, Trash2, Plus, Check } from 'lucide-react'
+import { Loader2, ScanLine, Trash2, Plus, Check, Settings2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MAX_IMAGE_BYTES, MAX_PHOTOS, type ItemDraft } from '@/lib/ai/schema'
 import type { AIProvider } from '@/lib/ai/providers'
-import type { StorageAction } from '@/lib/storage/types'
+import type { StorageAction, WorkspaceContainer } from '@/lib/storage/types'
 import { storageRequest, type PrepareChange, type PhotoConversationDraft, type PhotoDraftUpdate } from './contracts'
 import { applyPhotoDraftUpdate, photoActionStatus } from './photo-state'
 
@@ -50,12 +50,19 @@ async function preparePhoto(file: File) {
   } finally { bitmap.close() }
 }
 
-export function PhotoRegistration({ containerId, existingNames, prepare, action, locked, onDraftsChange, draftUpdate }: {
+export type PhotoRegistrationHandle = { openFiles: () => void; openCamera: () => void }
+
+export function PhotoRegistration({ ref, containerId, containers, onContainerChange, onPhotosAdded, existingNames, prepare, action, locked, interactionLocked = false, onDraftsChange, draftUpdate }: {
+  ref?: Ref<PhotoRegistrationHandle>
   containerId: string | null
+  containers: WorkspaceContainer[]
+  onContainerChange: (containerId: string | null) => void
+  onPhotosAdded?: () => void
   existingNames: string[]
   prepare: PrepareChange
   action: StorageAction | null
   locked: boolean
+  interactionLocked?: boolean
   onDraftsChange: (drafts: PhotoConversationDraft[]) => void
   draftUpdate: PhotoDraftUpdate | null
 }) {
@@ -70,6 +77,18 @@ export function PhotoRegistration({ containerId, existingNames, prepare, action,
   const mounted = useRef(true)
   const abort = useRef<AbortController | null>(null)
   const appliedUpdate = useRef<PhotoDraftUpdate | null>(null)
+  useImperativeHandle(ref, () => ({
+    openFiles: () => {
+      if (busy || locked || interactionLocked) return
+      if (photos.length >= MAX_PHOTOS) { toast.error(`한 번에 ${MAX_PHOTOS}장까지 추가할 수 있습니다`); return }
+      files.current?.click()
+    },
+    openCamera: () => {
+      if (busy || locked || interactionLocked) return
+      if (photos.length >= MAX_PHOTOS) { toast.error(`한 번에 ${MAX_PHOTOS}장까지 추가할 수 있습니다`); return }
+      camera.current?.click()
+    },
+  }), [busy, locked, interactionLocked, photos.length])
   useEffect(() => {
     mounted.current = true
     const currentUrls = urls.current
@@ -109,7 +128,7 @@ export function PhotoRegistration({ containerId, existingNames, prepare, action,
     appliedUpdate.current = draftUpdate
     setPhotos(previous => previous.map(photo => applyPhotoDraftUpdate(photo, draftUpdate, locked || photoActionStatus(photo, action) === 'prepared')))
   }, [draftUpdate, locked, action])
-  const disabled = busy || locked
+  const disabled = busy || locked || interactionLocked
   const awaiting = (photo: DraftPhoto) => photoActionStatus(photo, action) === 'prepared'
   function update(id: string, patch: Partial<DraftPhoto>) { setPhotos(previous => previous.map(photo => photo.id === id ? { ...photo, ...patch, revision: photo.revision + (('items' in patch || 'retain' in patch) ? 1 : 0) } : photo)) }
   async function addFiles(list: FileList | null) {
@@ -125,6 +144,7 @@ export function PhotoRegistration({ containerId, existingNames, prepare, action,
           const url = URL.createObjectURL(blob)
           urls.current.add(url)
           setPhotos(previous => [...previous, { id: crypto.randomUUID(), name: file.name, revision: 0, blob, url, status: 'queued', items: [], retain: false }])
+          onPhotosAdded?.()
         } catch (error) { toast.error(error instanceof Error ? error.message : '사진을 읽지 못했습니다') }
       }
     } finally { if (mounted.current) setBusy(false); if (camera.current) camera.current.value = ''; if (files.current) files.current.value = '' }
@@ -178,27 +198,28 @@ export function PhotoRegistration({ containerId, existingNames, prepare, action,
   function removePhoto(photo: DraftPhoto) { URL.revokeObjectURL(photo.url); urls.current.delete(photo.url); setPhotos(previous => previous.filter(p => p.id !== photo.id)) }
   const queued = photos.filter(photo => photo.status === 'queued')
   const statusLabels = { queued: '분석 대기', analyzing: '분석 중', ready: '확인 후 등록', error: '분석 실패', saved: '등록 완료' }
-  return <section className="space-y-4 rounded-lg border bg-card p-4 sm:p-6" aria-labelledby="workspace-photo-heading">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div className="space-y-1"><h2 id="workspace-photo-heading" className="text-xl font-semibold">사진으로 등록</h2><p className="text-sm text-muted-foreground">사진별 물품명과 수량을 확인한 뒤 등록하세요. AI에게 이름·수량 정정을 말해도 됩니다.</p></div><div className="space-y-1"><Label htmlFor="photo-provider" className="text-xs">사진 분석 AI</Label><select id="photo-provider" value={provider} onChange={e => setProvider(e.target.value as AIProvider)} disabled={disabled} className="block h-11 rounded-md border bg-background px-3 text-sm"><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option></select></div></div>
-    <p className="text-xs text-muted-foreground">분석할 사진은 {provider === 'openai' ? 'OpenAI' : 'Google Gemini'}로 전송됩니다. 사진 보관을 선택한 경우에만 앱에 사진을 저장합니다.</p>
+  return <section className="space-y-4 rounded-2xl bg-muted/40 p-4 sm:p-5" aria-labelledby="workspace-photo-heading">
+    <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="workspace-photo-heading" className="text-sm font-medium">사진으로 물품 등록</h2><span className="text-xs text-muted-foreground">{photos.length}/{MAX_PHOTOS}장</span></div>
+    <details className="text-xs text-muted-foreground"><summary className="flex min-h-9 cursor-pointer list-none items-center gap-1.5"><Settings2 className="size-3.5" />{provider === 'openai' ? 'OpenAI' : 'Google Gemini'}로 분석 · 옵션</summary><div className="space-y-2 pb-2"><Label htmlFor="photo-provider" className="text-xs">사진 분석 AI</Label><select id="photo-provider" value={provider} onChange={e => setProvider(e.target.value as AIProvider)} disabled={disabled} className="block h-11 w-full rounded-md border bg-background px-3 text-sm"><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option></select><p>분석할 사진은 선택한 AI로 전송됩니다. 사진 보관을 선택한 경우에만 앱에 사진을 저장합니다.</p></div></details>
     {keyError ? <p role="alert" className="text-sm text-destructive">{keyError} <Link className="underline" href="/settings">설정 확인</Link></p> : keyReady === false ? <p className="text-sm text-muted-foreground"><Link className="text-primary underline" href="/settings">설정에서 {provider === 'openai' ? 'OpenAI' : 'Gemini'} 키를 등록해주세요</Link></p> : keyReady === null ? <p role="status" className="text-sm text-muted-foreground">AI 설정 확인 중...</p> : null}
-    {provider === 'gemini' && !containerId && <p className="text-sm text-muted-foreground">Gemini 분석은 위에서 등록 대상을 먼저 선택해주세요.</p>}
+    {(photos.some(photo => photo.status === 'ready') || provider === 'gemini') && <div className="space-y-1.5"><Label htmlFor="photo-registration-target" className="text-xs">어디에 보관하나요?</Label><select id="photo-registration-target" value={containerId ?? ''} disabled={disabled} onChange={event => onContainerChange(event.target.value || null)} className="h-11 w-full rounded-md border bg-background px-3 text-sm"><option value="">보관함 선택</option>{containers.map(container => <option key={container.id} value={container.id}>{container.location_name || '장소 미지정'} → {container.name}</option>)}</select>{!containers.length && <p className="text-xs text-muted-foreground">대화로 보관함을 만들거나 상단 관리를 열어 추가해주세요.</p>}</div>}
+    {provider === 'gemini' && !containerId && <p className="text-sm text-muted-foreground">Gemini 분석은 등록할 보관함을 먼저 선택해주세요.</p>}
     <input ref={camera} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" aria-label="사진 촬영" onChange={e => void addFiles(e.target.files)} />
     <input ref={files} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" aria-label="여러 사진 선택" onChange={e => void addFiles(e.target.files)} />
-    <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={disabled || photos.length >= MAX_PHOTOS} onClick={() => camera.current?.click()}><Camera className="size-4" />사진 촬영</Button><Button variant="outline" disabled={disabled || photos.length >= MAX_PHOTOS} onClick={() => files.current?.click()}><ImagePlus className="size-4" />사진 선택</Button><Button disabled={disabled || !keyReady || !queued.length || (provider === 'gemini' && !containerId)} onClick={() => void analyze(queued)}>{busy ? <Loader2 className="size-4 animate-spin" /> : <ScanLine className="size-4" />}{busy ? '사진 처리 중...' : `${queued.length}장 분석하기`}</Button></div>
-    <p className="text-xs text-muted-foreground" role="status" aria-live="polite">{photos.length ? `${photos.length}/${MAX_PHOTOS}장 · ${photos.filter(p => p.status === 'saved').length}장 등록 완료` : 'OpenAI는 보관함을 선택하기 전에도 사진을 분석할 수 있어요.'}</p>
+    {(queued.length > 0 || busy) && <Button disabled={disabled || !keyReady || !queued.length || (provider === 'gemini' && !containerId)} onClick={() => void analyze(queued)}>{busy ? <Loader2 className="size-4 animate-spin" /> : <ScanLine className="size-4" />}{busy ? '사진 처리 중...' : `${queued.length}장 분석하기`}</Button>}
+    {!photos.length && <p className="text-sm text-muted-foreground">입력창의 + 버튼으로 사진을 첨부해주세요.</p>}
     {photos.map((photo, photoIndex) => {
       const photoLocked = disabled || awaiting(photo) || photo.status === 'saved'
-      return <article key={photo.id} className="space-y-4 rounded-lg border p-3">
+      return <article key={photo.id} className="space-y-4 rounded-xl bg-background p-3">
         <div className="flex items-center gap-3"><Image src={photo.url} alt={`${photoIndex + 1}번째 등록 사진`} width={80} height={80} unoptimized className="size-20 rounded-md object-contain" /><div className="min-w-0 flex-1 space-y-1"><p className="truncate text-sm font-medium">{photo.name}</p><Badge variant={photo.status === 'error' ? 'destructive' : 'outline'}>{awaiting(photo) ? '저장 확인 대기' : statusLabels[photo.status]}</Badge></div><Button variant="ghost" size="icon" aria-label={`${photoIndex + 1}번째 사진 제외`} disabled={photoLocked && photo.status !== 'saved'} onClick={() => removePhoto(photo)}><Trash2 className="size-4" /></Button></div>
         {photo.status === 'error' && <div className="space-y-2"><p role="alert" className="text-sm text-destructive">{photo.error}</p><Button variant="outline" disabled={disabled || !keyReady || (provider === 'gemini' && !containerId)} onClick={() => void analyze([photo])}>이 사진 다시 분석</Button></div>}
         {photo.status === 'ready' && <div className="space-y-3">
-          {photo.items.map((item, index) => <div key={index} className="space-y-2 rounded-md bg-muted/40 p-3"><div className="grid gap-2 sm:grid-cols-[1fr_6rem_auto]"><div className="space-y-1"><Label htmlFor={`${photo.id}-${index}-name`}>물품명 *</Label><Input id={`${photo.id}-${index}-name`} value={item.name} maxLength={100} disabled={photoLocked} onChange={e => editItem(photo, index, { name: e.target.value })} /></div><div className="space-y-1"><Label htmlFor={`${photo.id}-${index}-qty`}>수량 *</Label><Input id={`${photo.id}-${index}-qty`} type="number" min={1} max={9999} step={1} placeholder="확인 필요" value={item.quantity ?? ''} disabled={photoLocked} onChange={e => editItem(photo, index, { quantity: e.target.value ? Number(e.target.value) : null })} /></div><Button className="self-end" variant="ghost" size="icon" aria-label={`${item.name || index + 1} 후보 제외`} disabled={photoLocked} onClick={() => update(photo.id, { items: photo.items.filter((_, i) => i !== index) })}><Trash2 className="size-4" /></Button></div><Label htmlFor={`${photo.id}-${index}-description`} className="sr-only">설명</Label><Input id={`${photo.id}-${index}-description`} placeholder="색상, 형태 등 식별 정보" value={item.description} maxLength={1000} disabled={photoLocked} onChange={e => editItem(photo, index, { description: e.target.value })} />{(item.quantity === null || item.uncertainty) && <p className="text-xs text-muted-foreground">확인 필요: {item.uncertainty || '실제 수량을 입력해주세요'}</p>}{existingNames.some(name => name.trim().toLocaleLowerCase() === item.name.trim().toLocaleLowerCase()) && <p className="text-xs text-muted-foreground">등록 대상에 같은 이름의 물품이 있습니다. 중복인지 확인해주세요.</p>}</div>)}
+          {photo.items.map((item, index) => <div key={index} className="space-y-2 border-b pb-3 last:border-0"><div className="grid grid-cols-[minmax(0,1fr)_4.5rem_2.5rem] items-end gap-2"><div className="min-w-0 space-y-1"><Label htmlFor={`${photo.id}-${index}-name`} className="text-xs">물품명</Label><Input id={`${photo.id}-${index}-name`} value={item.name} maxLength={100} disabled={photoLocked} onChange={e => editItem(photo, index, { name: e.target.value })} /></div><div className="min-w-0 space-y-1"><Label htmlFor={`${photo.id}-${index}-qty`} className="text-xs">수량</Label><Input id={`${photo.id}-${index}-qty`} type="number" min={1} max={9999} step={1} placeholder="확인" value={item.quantity ?? ''} disabled={photoLocked} onChange={e => editItem(photo, index, { quantity: e.target.value ? Number(e.target.value) : null })} /></div><Button variant="ghost" size="icon" aria-label={`${item.name || index + 1} 후보 제외`} disabled={photoLocked} onClick={() => update(photo.id, { items: photo.items.filter((_, i) => i !== index) })}><Trash2 className="size-4" /></Button></div><details className="text-xs text-muted-foreground"><summary className="min-h-8 cursor-pointer py-1.5">설명 수정</summary><Label htmlFor={`${photo.id}-${index}-description`} className="sr-only">설명</Label><Input id={`${photo.id}-${index}-description`} placeholder="색상, 형태 등 식별 정보" value={item.description} maxLength={1000} disabled={photoLocked} onChange={e => editItem(photo, index, { description: e.target.value })} /></details>{(item.quantity === null || item.uncertainty) && <p className="text-xs text-muted-foreground">확인 필요: {item.uncertainty || '실제 수량을 입력해주세요'}</p>}{existingNames.some(name => name.trim().toLocaleLowerCase() === item.name.trim().toLocaleLowerCase()) && <p className="text-xs text-muted-foreground">이 보관함에 같은 이름의 물품이 있습니다.</p>}</div>)}
           {!photo.items.length && <p className="text-sm text-muted-foreground">등록 후보가 없습니다. 직접 추가할 수 있어요.</p>}
           <Button variant="outline" size="sm" disabled={photoLocked || photo.items.length >= 30} onClick={() => update(photo.id, { items: [...photo.items, { name: '', quantity: 1, description: '', uncertainty: '' }] })}><Plus className="size-4" />후보 추가</Button>
-          <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={photo.retain} disabled={photoLocked} onChange={e => update(photo.id, { retain: e.target.checked })} />이 사진을 함께 보관</label><p className="text-xs text-muted-foreground">보관한 사진은 ‘등록 당시 사진’으로 표시됩니다. 현재 위치는 물품 기록을 따릅니다.</p>
-          {!containerId && <p className="text-sm text-muted-foreground">저장 전에 위에서 등록할 보관함을 선택해주세요.</p>}
-          <Button disabled={photoLocked || !containerId || !photo.items.length || photo.items.some(item => !item.name.trim() || !Number.isInteger(item.quantity) || Number(item.quantity) < 1 || Number(item.quantity) > 9999)} onClick={() => void register(photo)}><Check className="size-4" />{awaiting(photo) ? '위 변경 카드에서 저장을 확인해주세요' : '등록 내용 확인'}</Button>
+          <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={photo.retain} disabled={photoLocked} onChange={e => update(photo.id, { retain: e.target.checked })} />이 사진을 함께 보관</label>
+          {!containerId && <p className="text-sm text-muted-foreground">등록할 보관함을 선택해주세요.</p>}
+          <Button disabled={photoLocked || !containerId || !photo.items.length || photo.items.some(item => !item.name.trim() || !Number.isInteger(item.quantity) || Number(item.quantity) < 1 || Number(item.quantity) > 9999)} onClick={() => void register(photo)}><Check className="size-4" />{awaiting(photo) ? '대화에서 저장을 확인해주세요' : '등록 내용 확인'}</Button>
         </div>}
       </article>
     })}

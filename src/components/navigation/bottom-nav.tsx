@@ -9,6 +9,9 @@ import { navIcons } from "./nav-icons";
 export function BottomNav() {
   const pathname = usePathname();
 
+  // The conversation composer occupies the bottom edge on the storage route.
+  if (pathname === "/storage") return null;
+
   // Check if current path matches the nav item href
   const isActive = (href: string) => {
     if (href === "/") {

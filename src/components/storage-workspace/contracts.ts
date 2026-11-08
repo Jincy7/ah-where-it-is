@@ -12,6 +12,16 @@ export type PhotoDraftUpdate = { photo_id: string; expected_revision: number; it
 
 export interface AssistantPanelProps {
   active?: boolean
+  messages: Array<{ id: string; role: 'user' | 'assistant'; content: string }>
+  onMessage: (message: { id: string; role: 'user' | 'assistant'; content: string }) => void
+  onBusyChange?: (busy: boolean) => void
+  onAttachPhoto?: () => void
+  onTakePhoto?: () => void
+  onManage?: () => void
+  onDirectRegister?: () => void
+  onSearch?: () => void
+  prompt?: { id: number; text: string }
+  contextLabel?: string
   selectedContainerId: string | null
   searchScope: string | null
   registrationContainerId: string | null
