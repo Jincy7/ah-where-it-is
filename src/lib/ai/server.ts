@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { decryptApiKey } from "./crypto";
 import { VisionError } from "./gemini";
+import type { AIProvider } from "./providers";
 
 export function aiAdmin() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY)
@@ -16,7 +17,7 @@ export function aiAdmin() {
   );
 }
 export function encryptionSecret() {
-  const secret = process.env.GEMINI_KEY_ENCRYPTION_SECRET;
+  const secret = process.env.AI_KEY_ENCRYPTION_SECRET || process.env.GEMINI_KEY_ENCRYPTION_SECRET;
   if (
     !secret ||
     Buffer.from(secret, "base64").length !== 32 ||
@@ -33,6 +34,8 @@ export function localGeminiKey() {
     : undefined;
 }
 export async function userGeminiKey(userId: string) {
+  const credential = await storedCredential(userId, "gemini");
+  if (credential) return decryptCredential(credential.encrypted_key, userId, "gemini");
   const { data, error } = await aiAdmin()
     .from("user_gemini_keys")
     .select("encrypted_key")
@@ -54,9 +57,34 @@ export async function userGeminiKey(userId: string) {
   if (local) return local;
   throw new VisionError("설정에서 Gemini API 키를 먼저 등록해주세요", 422);
 }
+async function storedCredential(userId: string, provider: AIProvider) {
+  const { data, error } = await aiAdmin()
+    .from("user_ai_credentials")
+    .select("encrypted_key")
+    .eq("user_id", userId)
+    .eq("provider", provider)
+    .maybeSingle();
+  if (error) throw new VisionError("AI 키 설정을 불러오지 못했습니다", 503);
+  return data;
+}
+function decryptCredential(encrypted: string, userId: string, provider: AIProvider) {
+  try {
+    return decryptApiKey(encrypted, userId, encryptionSecret(), provider);
+  } catch {
+    throw new VisionError("저장된 AI 키를 사용할 수 없습니다. 설정에서 다시 등록해주세요", 503);
+  }
+}
+export async function userOpenAIKey(userId: string) {
+  const credential = await storedCredential(userId, "openai");
+  if (!credential) throw new VisionError("설정에서 OpenAI API 키를 먼저 등록해주세요", 422);
+  return decryptCredential(credential.encrypted_key, userId, "openai");
+}
+export async function userProviderKey(userId: string, provider: AIProvider) {
+  return provider === "openai" ? userOpenAIKey(userId) : userGeminiKey(userId);
+}
 export async function consumeQuota(
   userId: string,
-  scope: "analysis" | "key-write",
+  scope: "analysis" | "key-write" | "chat" | "realtime" | "tool" | "transcription",
 ) {
   const { data, error } = await aiAdmin().rpc("consume_ai_quota", {
     p_user_id: userId,
@@ -69,7 +97,7 @@ export async function consumeQuota(
     );
   if (!data)
     throw new VisionError(
-      "시간당 30회 한도에 도달했습니다. 다음 시간에 다시 시도해주세요",
+      `시간당 ${scope === "tool" ? 120 : 30}회 한도에 도달했습니다. 다음 시간에 다시 시도해주세요`,
       429,
     );
 }

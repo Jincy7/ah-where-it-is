@@ -14,7 +14,8 @@ const withPWA = withPWAInit({
     // 런타임 캐싱 플러그인을 수동으로 설정하여 async 함수 사용 방지
     runtimeCaching: [
       {
-        urlPattern: ({ sameOrigin, url }) => sameOrigin && (url.pathname.startsWith('/api/settings/gemini') || url.pathname.startsWith('/api/items/analyze')),
+        // Credentials, private records and signed media must never enter offline caches.
+        urlPattern: ({ sameOrigin, url }) => (sameOrigin && (url.pathname.startsWith('/api/') || url.pathname === '/storage' || url.pathname.startsWith('/container/') || url.pathname === '/search' || url.pathname === '/settings')) || url.pathname.startsWith('/storage/v1/object/sign/'),
         handler: 'NetworkOnly',
       },
       {
