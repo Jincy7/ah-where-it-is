@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AssistantPanel } from '@/components/agent/assistant-panel'
 import type { StorageAction, WorkspaceContainer, WorkspaceData, WorkspaceItem, WorkspaceLocation } from '@/lib/storage/types'
 import { ActionCard } from './action-card'
+import { ChatMessage } from './chat-message'
 import { ContainerEditor, ItemEditor, LocationEditor, MoveEditor } from './editors'
 import { ManagementDialog } from './management-dialog'
 import { ResultsCard } from './results-card'
@@ -302,7 +303,7 @@ export function StorageWorkspace() {
       {!hasConversation && data && <div className="flex min-h-[45dvh] flex-col items-center justify-center gap-5 text-center"><div className="space-y-2"><h2 className="text-2xl font-semibold tracking-tight">어떤 물건을 찾으세요?</h2><p className="text-sm text-muted-foreground">말로 찾고, 사진으로 기록해보세요.</p></div><div className="flex max-w-md flex-wrap justify-center gap-2"><Button variant="outline" className="rounded-full" disabled={locked} onClick={() => { followBottom.current = true; setPrompt({ id: Date.now(), text: '등록된 보관함을 보여줘' }) }}>보관함 둘러보기</Button><Button variant="outline" className="rounded-full" disabled={locked} onClick={() => { followBottom.current = true; setPrompt({ id: Date.now(), text: '충전기 어디 있어?' }) }}>충전기 어디 있어?</Button><Button variant="outline" className="rounded-full" disabled={locked} onClick={() => attachPhoto()}><Camera className="size-4" />사진으로 등록</Button></div></div>}
       <div className="space-y-6">{conversation.entries.map(entry => {
         if (entry.kind === 'photos') return <div key={entry.id} hidden={!photosActive}><PhotoRegistration ref={photoRef} containers={containers} containerId={registrationContainerId} onContainerChange={setRegistrationContainerId} existingNames={(data?.items ?? []).filter(item => item.container_id === registrationContainerId).map(item => item.name)} prepare={prepare} action={action} locked={storageLocked} interactionLocked={assistantBusy} onDraftsChange={receivePhotoDrafts} draftUpdate={photoDraftUpdate} onPhotosAdded={activatePhotos} /></div>
-        if (entry.kind === 'message') return <div key={entry.id} className={entry.role === 'user' ? 'ml-auto w-fit max-w-[88%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-4 py-3 text-sm' : 'max-w-full whitespace-pre-wrap break-words py-1 text-sm leading-relaxed'}><span className="sr-only">{entry.role === 'user' ? '나' : '보관 도우미'}: </span>{entry.content}</div>
+        if (entry.kind === 'message') return <ChatMessage key={entry.id} role={entry.role} content={entry.content} />
         if (entry.kind === 'results') return <ResultsCard key={entry.id} items={entry.items} title={entry.title} emptyMessage={entry.containerId ? '이 보관함에 등록된 물품이 없어요.' : undefined} locked={locked} onEdit={item => openEditor({ kind: 'item', item })} onMove={item => openEditor({ kind: 'move', item })} onDelete={item => void requestDelete('delete_item', item)} />
         const entryAction = conversation.actions[entry.actionId]
         if (!entryAction) return null
