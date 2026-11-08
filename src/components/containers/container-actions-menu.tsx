@@ -42,7 +42,7 @@ export function ContainerActionsMenu({
 
   // Generate the full URL for the container
   const containerUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/container/${containerId}`
+    ? `${window.location.origin}/storage?container=${containerId}&mode=manual`
     : ''
 
   const handlePrint = () => {
@@ -64,7 +64,7 @@ export function ContainerActionsMenu({
 
       toast.success('보관함이 삭제되었습니다')
       setShowDeleteDialog(false)
-      router.push('/container')
+      router.push('/storage')
       router.refresh()
     } catch (error) {
       console.error('Error deleting container:', error)

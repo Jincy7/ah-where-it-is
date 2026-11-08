@@ -34,22 +34,22 @@ export const navGroups = [
     items: [
       {
         href: '/storage',
-        label: '보관함 목록',
+        label: '보관함 작업 화면',
         icon: 'archive',
       },
       {
-        href: '/search',
+        href: '/storage?mode=manual',
         label: '물품 검색',
         icon: 'search',
       },
       {
-        href: '/container/new',
+        href: '/storage?mode=manual&panel=new-container',
         label: '새 보관함',
         icon: 'plus',
       },
       {
-        href: '/settings',
-        label: '위치와 QR 도구',
+        href: '/storage?panel=locations',
+        label: '장소와 QR 도구',
         icon: 'mapPinned',
       },
     ],

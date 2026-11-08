@@ -48,7 +48,7 @@ export function BulkQrCodeButton() {
 
   const getContainerUrl = (containerId: string) => {
     if (typeof window !== 'undefined') {
-      return `${window.location.origin}/container/${containerId}`
+      return `${window.location.origin}/storage?container=${containerId}&mode=manual`
     }
     return ''
   }

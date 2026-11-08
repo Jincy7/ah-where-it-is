@@ -23,7 +23,7 @@ export function QrCodeButton({ containerId, containerName }: QrCodeButtonProps) 
 
   // Generate the full URL for the container
   const containerUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/container/${containerId}`
+    ? `${window.location.origin}/storage?container=${containerId}&mode=manual`
     : ''
 
   const handlePrint = () => {

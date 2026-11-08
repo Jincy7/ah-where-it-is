@@ -24,8 +24,8 @@ type HasHref<Href extends string> = Extract<AllNavHrefs, Href> extends never
   : true
 
 type _StorageHomeIsAccessible = Expect<HasHref<'/storage'>>
-type _StorageSearchIsAccessible = Expect<HasHref<'/search'>>
-type _NewContainerIsAccessible = Expect<HasHref<'/container/new'>>
-type _StorageToolsAreAccessible = Expect<HasHref<'/settings'>>
+type _StorageSearchIsAccessible = Expect<HasHref<'/storage?mode=manual'>>
+type _NewContainerIsAccessible = Expect<HasHref<'/storage?mode=manual&panel=new-container'>>
+type _StorageToolsAreAccessible = Expect<HasHref<'/storage?panel=locations'>>
 type _WorkoutHomeIsAccessible = Expect<HasHref<'/workouts'>>
 type _WorkoutHistoryIsAccessible = Expect<HasHref<'/workouts/history'>>
