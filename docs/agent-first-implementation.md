@@ -5,7 +5,7 @@
 ## 적용 순서
 
 1. Node 22, pnpm 10.10.0 환경에서 기존 로컬 인프라를 시작한다.
-2. `supabase migration up --local`로 `00008_ai_providers.sql`, `00009_storage_actions.sql`, `00010_media_owner_cleanup.sql`을 적용한다. 운영에는 배포 전 세 마이그레이션을 순서대로 별도 적용해야 한다. 이번 작업은 운영 DB를 변경하지 않았다.
+2. `supabase migration up --local`로 `00008_ai_providers.sql`, `00009_storage_actions.sql`, `00010_media_owner_cleanup.sql`, `00011_transcription_quota.sql`, `00012_bulk_item_move.sql`을 적용한다. 운영에는 배포 전 다섯 마이그레이션을 순서대로 별도 적용해야 한다. 이번 작업은 운영 DB를 변경하지 않았다.
 3. 서버의 `SUPABASE_SERVICE_ROLE_KEY`와 기존 `GEMINI_KEY_ENCRYPTION_SECRET`를 유지한다. 공통 이름 `AI_KEY_ENCRYPTION_SECRET`도 지원하지만 기존 암호문을 읽으려면 동일한 32바이트 base64 비밀값이어야 한다.
 4. 설정에서 개인 OpenAI 키를 등록한다. `.env.local`의 `OPENAI_API_KEY`는 로컬 개발 앱·로컬 Supabase에서만 **개발용 키 가져오기**로 로그인한 사용자에게 암호화 저장할 수 있다. 환경 키를 배포 사용자에게 자동 공유하지 않는다.
 
@@ -14,6 +14,7 @@
 | 변수 | 기본값 | 용도 |
 | --- | --- | --- |
 | `OPENAI_MODEL` | `gpt-5.4-mini` | 텍스트 도구 호출·사진 후보 |
+| `OPENAI_TRANSCRIPTION_MODEL` | `gpt-transcribe` | 녹음 파일 → 입력창 텍스트 |
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | WebRTC 음성 세션 |
 | `AI_KEY_ENCRYPTION_SECRET` | 기존 Gemini 암호화 비밀값 사용 | 공급자·사용자별 AES-256-GCM |
 
@@ -38,19 +39,21 @@
 
 검색은 이름·설명을 단어별로 비교한다. 예를 들어 `검은색 충전기`는 `검은색 USB-C 충전기`를 찾는다. 기본 찾기 범위와 등록 대상은 분리된다. 위치는 현재 기록의 장소 → 보관함 경로이며 사진에는 등록 당시 사진임을 표시한다. 초기 목록은 1,000개까지 표시하고 초과 여부를 안내한다. 보관함 삭제는 전체 영향 목록을 수집하며 10,000개 초과는 한 번에 삭제하지 않는다.
 
+기본 마이크는 음성 전사만 수행한다. 최대 60초·10MB 녹음을 `/api/agent/transcribe`로 보내 텍스트를 입력창에 추가하고, 사용자가 직접 전송한다. 녹음은 앱에 저장하지 않으며 사용자 암호화 키와 전사 전용 30회/시간 제한을 사용한다. 변환 중 타이핑·한글 조합·취소·화면 종료를 처리한다. 실시간 AI 응답은 별도 `음성 모드`에서만 시작한다.
+
 Realtime은 서버에서 사용자 키를 복호화해 SDP를 교환한다. 브라우저에는 일반 키를 전달하지 않는다. 음성 도구는 같은 인증·소유권·변경 계약을 사용한다. 종료·실패·보기 전환 시 오디오 트랙을 정리하고 사진·대화 초안을 유지한다. 연결은 10분 후 종료하며 도구 호출 반복에도 상한을 둔다.
 
 ## 검증
 
 ```sh
 pnpm test
-RUN_AI_INTEGRATION=1 RUN_STORAGE_INTEGRATION=1 RUN_AGENT_INTEGRATION=1 pnpm test
+RUN_AI_INTEGRATION=1 RUN_STORAGE_INTEGRATION=1 RUN_AGENT_INTEGRATION=1 RUN_TRANSCRIPTION_INTEGRATION=1 pnpm test
 pnpm lint
 pnpm build
 supabase db lint --local --schema public --level error
 ```
 
-최종 검증은 Node 22.18.0 / pnpm 10.10.0에서 수행했다. 채팅 전환 후 통합 테스트를 포함해 45개 모두 통과했으며 lint는 오류 0개(기존 ContainerForm의 React Hook Form 경고 1개), production build와 DB 스키마 lint는 성공했다. 의존성 변경은 없었다.
+최종 검증은 Node 22.18.0 / pnpm 10.10.0에서 수행했다. 음성 입력 분리와 보관함 이동 수정 후 통합 테스트를 포함해 71개 모두 통과했으며 lint는 오류 0개(기존 ContainerForm의 React Hook Form 경고 1개), production build와 DB 스키마 lint는 성공했다. 의존성 변경은 없었다.
 
 통합 테스트는 로컬 Supabase만 허용하고 테스트 계정·사진을 정리한다. 외부 모델을 호출하지 않고 암호화, RLS, 인증·CSRF, 명시적 전체 검색, 준비 단계의 무변경, revision 충돌, 승인값 변조, 중복 확인, 기존 일괄 등록과의 동시성, 삭제 영향 변경, 공유 사진·정리와 사진을 보관한 계정 삭제를 검증한다.
 
@@ -58,6 +61,10 @@ supabase db lint --local --schema public --level error
 
 채팅 전환 검증에서는 AI 응답을 테스트 값으로 대체하고 실제 로컬 저장 API를 사용했다. 검색 → 이동 확인 → 완료, 직접 등록, 사진 분석 후보 → 대상 선택 → 사진 보관·등록을 확인했다. 저장 응답을 의도적으로 끊은 뒤 같은 승인값으로 재시도해 중복 변경 없이 완료되는 것도 확인했다. 관리 창을 열고 닫아도 사진 수량이 유지되고, 사진을 추가하면 기존 초안을 보존한 채 현재 대화 위치로 이동한다. 한글 조합 중 Enter·Shift+Enter는 전송하지 않으며 음성 지원 실패를 두 번 겪어도 텍스트 입력이 동작한다. 390×844와 데스크톱 화면에서 가로 넘침 없이 대화 영역만 스크롤하고 하단 입력창이 유지된다.
 
+추가 검증에서 “공구함에 있는거 책상에 좀 옮겨줘”를 별도 테스트 계정으로 실제 OpenAI에 요청해 보관함 조회 → 내용물 조회 → `move_items` 준비가 이어지는 것을 확인했다. `move_items`는 출발 보관함의 전체 물품 목록과 버전을 저장하고, 확정 때 정확한 목록 일치 여부를 다시 확인해 한 트랜잭션으로 이동한다. 1,001개 물품, 동시 재시도, 변경 충돌, 소유권과 사진 연결을 통합 테스트했다. 보관함 이름을 물품 검색으로 보낸 경우에도 보관함 후보를 반환하고, 중간 빈 결과 카드는 반복 표시하지 않는다. 이동 후 출발 보관함 목록에서 옮긴 물품을 제거한다.
+
+브라우저 전사 검증은 가짜 녹음 장치와 전사 응답을 사용했다. 기본 마이크에서 전사만 호출되고 수동 전송 전 채팅·Realtime 호출은 0회, 음성 모드 버튼에서만 Realtime이 호출되는 것을 확인했다. 한글 조합 중 전사가 도착해도 최종 조합 뒤에 합쳐진다. 실제 마이크 음질과 전사 정확도는 기기에서 추가 확인해야 한다. 사용자 원본 기록은 조회만 했으며 테스트 계정·사진·키는 정리했다.
+
 실제 생활 사진 20–30장과 검색 질의 40–60개에 대한 모델 품질 평가는 아직 수행하지 않았다. 실제 iOS/Android 마이크·카메라와 한국어 음성 인식은 기기 검증이 필요하다. 의미 검색, 장기 작업, 새로고침 이후의 미저장 초안 복구는 명세의 후속 확장 범위로 남긴다.
 
-공식 구현 참고: [Responses 함수 호출](https://developers.openai.com/api/docs/guides/function-calling), [구조화 출력](https://developers.openai.com/api/docs/guides/structured-outputs), [Realtime WebRTC](https://developers.openai.com/api/docs/guides/voice-webrtc).
+공식 구현 참고: [음성 전사](https://developers.openai.com/api/docs/guides/speech-to-text), [Responses 함수 호출](https://developers.openai.com/api/docs/guides/function-calling), [구조화 출력](https://developers.openai.com/api/docs/guides/structured-outputs), [Realtime WebRTC](https://developers.openai.com/api/docs/guides/voice-webrtc).
