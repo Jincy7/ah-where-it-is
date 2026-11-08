@@ -55,11 +55,12 @@ export function AssistantPanel(props: AssistantPanelProps) {
   }), [props.selectedContainerId, props.searchScope, props.registrationContainerId, props.activeAction?.action_id, props.activeAction?.revision, props.photoDrafts]);
 
   const onEvent = useCallback((event: ToolEvent) => {
-    const result = event.result as { items?: WorkspaceItem[]; action?: StorageAction; photoDraft?: PhotoDraftUpdate; container_matches?: unknown[] };
+    const result = event.result as { items?: WorkspaceItem[]; action?: StorageAction; photoDraft?: PhotoDraftUpdate; container_matches?: unknown[]; location_matches?: unknown[] };
     if (result.photoDraft && !current.current.onPhotoDraft(result.photoDraft)) {
       setError('사진 후보가 바뀌어 정정을 적용하지 못했습니다. 현재 내용을 확인해주세요.');
     }
-    if (result.items && !(result.items.length === 0 && result.container_matches?.length)) current.current.onSearchResults(result.items);
+    const hierarchyResult = event.name === 'get_location' || event.name === 'get_container' || result.container_matches?.length || result.location_matches?.length;
+    if (result.items && !(result.items.length === 0 && hierarchyResult)) current.current.onSearchResults(result.items);
     if (result.action) current.current.onAction(result.action);
   }, []);
   const onTranscript = useCallback((role: 'user' | 'assistant', content: string) => {

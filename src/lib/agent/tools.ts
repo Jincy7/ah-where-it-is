@@ -6,11 +6,11 @@ import { storageContext } from '@/lib/storage/service';
 import { consumeQuota, userProviderKey } from '@/lib/ai/server';
 import { analyzeOpenAIImage } from '@/lib/ai/openai';
 import { analyzeImage } from '@/lib/ai/gemini';
-import { cancelChange, getActionStatus, getContainer, listContainers, prepareChange, searchItems } from '@/lib/storage/service';
+import { cancelChange, getActionStatus, getContainer, getLocation, listContainers, listLocations, prepareChange, searchItems } from '@/lib/storage/service';
 import { changeSchema } from '@/lib/storage/schema';
 import { VisionError } from '@/lib/ai/gemini';
 import type { AgentContext, ToolName } from './contracts';
-import { matchContainerNames } from './container-lookup';
+import { matchStorageNames } from './container-lookup';
 
 const id = z.string().uuid();
 export async function executeStorageTool(name: ToolName, args: Record<string,unknown>, context:AgentContext) {
@@ -19,12 +19,21 @@ export async function executeStorageTool(name: ToolName, args: Record<string,unk
       const input=z.object({query:z.string().trim().min(1).max(100),container_id:id.nullable()}).strict().parse(args);
       const items=await searchItems(input.query,input.container_id ?? undefined);
       if(items.length)return {items};
-      const matches=matchContainerNames(input.query,await listContainers());
-      return matches.length ? {
-        items, container_matches: matches.map(container=>({id:container.id,name:container.name,location_name:container.location_name,item_count:container.item_count})),
-        hint:'물품 검색 결과는 없지만 이름이 일치하는 보관함이 있습니다. 보관함이 없다고 답하지 마세요. get_container로 내용물을 조회하고, 여러 후보가 있으면 사용자에게 구분을 요청하세요.',
+      const [containers,locations]=await Promise.all([listContainers(),listLocations()]);
+      const matches=matchStorageNames(input.query,containers);
+      const locationMatches=matchStorageNames(input.query,locations);
+      return matches.length || locationMatches.length ? {
+        items,
+        container_matches: matches.map(container=>({id:container.id,name:container.name,location_name:container.location_name,item_count:container.item_count})),
+        location_matches: locationMatches,
+        hint:'물품 검색 결과는 없지만 이름이 일치하는 장소 또는 보관함이 있습니다. 장소와 보관함은 서로 다른 계층입니다. location_matches는 get_location, container_matches는 get_container로 내용물을 조회하세요. 빈 물품 목록으로 부모 기록이 없다고 답하지 말고, 여러 대상이 일치하면 구분을 요청하세요.',
       } : {items};
     }
+    case 'list_locations':
+      z.object({}).strict().parse(args);
+      return {locations:await listLocations()};
+    case 'get_location':
+      return await getLocation(z.object({location_id:id}).strict().parse(args).location_id);
     case 'list_containers':
       z.object({}).strict().parse(args);
       return {containers:await listContainers()};

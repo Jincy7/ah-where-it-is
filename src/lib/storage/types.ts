@@ -1,6 +1,7 @@
 import type { Tables } from "@/types/supabase";
 
 export type StorageLocation = Tables<"locations"> & { version: number };
+export type StorageLocationSummary = StorageLocation & { container_count: number; item_count: number };
 export type StorageContainer = Tables<"containers"> & {
   version: number;
   contents_version: number;

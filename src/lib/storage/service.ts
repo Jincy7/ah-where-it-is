@@ -5,7 +5,8 @@ import { aiAdmin } from "@/lib/ai/server";
 import { VisionError } from "@/lib/ai/gemini";
 import type { Json } from "@/types/supabase";
 import { actionPayloadSchemas, canonicalJson, changeSchema, confirmationSchema } from "./schema";
-import type { ChangeInput, StorageAction, StorageContainer, StorageItem, StorageLocation, WorkspaceData } from "./types";
+import type { ChangeInput, StorageAction, StorageContainer, StorageItem, StorageLocation, StorageLocationSummary, WorkspaceData } from "./types";
+import { LOCATION_ITEM_LIMIT, locationContents, summarizeLocations } from "./location-lookup";
 
 export async function storageContext() {
   const supabase = await createClient();
@@ -38,28 +39,61 @@ async function mediaUrls(ids: string[]) {
 export async function listContainers(): Promise<StorageContainer[]> {
   const { supabase, user } = await storageContext();
   const [containers, locations, counts] = await Promise.all([
-    supabase.from("containers").select("*").eq("user_id", user.id).order("name"),
-    supabase.from("locations").select("id,name").eq("user_id", user.id),
+    supabase.from("containers").select("*", { count: "exact" }).eq("user_id", user.id).order("name").limit(1000),
+    supabase.from("locations").select("id,name", { count: "exact" }).eq("user_id", user.id).limit(1000),
     supabase.from("containers").select("id,items(count)").eq("user_id", user.id),
   ]);
   databaseError(containers.error); databaseError(locations.error); databaseError(counts.error);
+  assertCompleteHierarchy(containers); assertCompleteHierarchy(locations);
   const names = new Map(locations.data?.map((l) => [l.id, l.name]));
   const countMap = new Map((counts.data ?? []).map((c) => [c.id, c.items[0]?.count ?? 0]));
   const urls = await mediaUrls((containers.data ?? []).flatMap((c) => c.cover_media_id ? [c.cover_media_id] : []));
   return (containers.data ?? []).map((c) => ({ ...c, location_name: names.get(c.location_id ?? "") ?? null, item_count: countMap.get(c.id) ?? 0, cover_url: c.cover_media_id ? urls.get(c.cover_media_id) ?? null : c.internal_photo_url }));
 }
 
+function assertCompleteHierarchy(result: { data: unknown[] | null; count: number | null }) {
+  if (result.count !== (result.data?.length ?? 0)) throw new VisionError("보관 장소와 보관함이 많아 전체 목록을 확인하지 못했습니다", 422);
+}
+
+async function locationHierarchy() {
+  const { supabase, user } = await storageContext();
+  const [locations, containers] = await Promise.all([
+    supabase.from("locations").select("*", { count: "exact" }).eq("user_id", user.id).order("name").limit(1000),
+    listContainers(),
+  ]);
+  databaseError(locations.error);
+  assertCompleteHierarchy(locations);
+  return { locations: summarizeLocations(locations.data ?? [], containers), containers };
+}
+
+export async function listLocations(): Promise<StorageLocationSummary[]> {
+  return (await locationHierarchy()).locations;
+}
+
+export async function getLocation(locationId: string) {
+  const { locations, containers } = await locationHierarchy();
+  const location = locations.find(entry => entry.id === locationId);
+  if (!location) throw new VisionError("장소를 찾을 수 없습니다", 404);
+  const items = location.container_count ? await searchItems("", undefined, locationId) : [];
+  return locationContents(location, containers, items);
+}
+
 // A quoted PostgREST literal preserves punctuation without letting it create filters.
 export function searchLiteral(query: string) {
   return `"%${query.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_").replace(/"/g, '\\"')}%"`;
 }
-export async function searchItems(query = "", containerId?: string): Promise<StorageItem[]> {
+export async function searchItems(query = "", containerId?: string, locationId?: string): Promise<StorageItem[]> {
   const { supabase } = await storageContext();
   if (query.length > 200) throw new VisionError("검색어는 200자 이내로 입력해주세요", 400);
   const containers = await listContainers();
   if (containerId && !containers.some((c) => c.id === containerId)) throw new VisionError("보관함을 찾을 수 없습니다", 404);
-  let request = supabase.from("items").select("*").order("updated_at", { ascending: false }).limit(1000);
+  let request = supabase.from("items").select("*").order("updated_at", { ascending: false }).limit(LOCATION_ITEM_LIMIT);
   if (containerId) request = request.eq("container_id", containerId);
+  if (locationId) {
+    const children = containers.filter(container => container.location_id === locationId);
+    if (!children.length) return [];
+    request = request.in("container_id", children.map(container => container.id));
+  }
   const trimmed = query.trim();
   const tokens = [...new Set(trimmed.split(/\s+/).filter(Boolean))].slice(0,20);
   if (tokens.length) {
