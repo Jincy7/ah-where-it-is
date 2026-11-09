@@ -1,3 +1,5 @@
+import type { MapAnchor } from '@/lib/storage/map-types'
+
 export type Cell = { col: number; row: number }
 export type Rectangle = { col: number; row: number; width: number; height: number }
 export type CellRegion = { id: string; cells: Cell[] }
@@ -29,10 +31,15 @@ export function gridResizeProblem(columns: number, rows: number, regions: CellRe
   return null
 }
 /** A translated region carries its markers; resizing returns outside markers for explicit impact review. */
-export function transformRegion<T extends Cell & { region_id: string }>(region: CellRegion, next: Rectangle, anchors: T[]) {
+export function transformRegion<T extends Cell & { region_id: string }>(region: CellRegion, next: Rectangle, anchors: T[], anchorMode: 'translate' | 'preserve' = 'translate') {
   const before = regionBounds(region.cells)
   const cells = rectangleCells(next)
-  const translated = anchors.map(anchor => anchor.region_id === region.id ? { ...anchor, col: anchor.col + next.col - before.col, row: anchor.row + next.row - before.row } : anchor)
+  const translated = anchors.map(anchor => anchor.region_id === region.id && anchorMode === 'translate' ? { ...anchor, col: anchor.col + next.col - before.col, row: anchor.row + next.row - before.row } : anchor)
   const removed = translated.filter(anchor => anchor.region_id === region.id && !containsCell(cells, anchor))
   return { cells, anchors: translated.filter(anchor => !removed.includes(anchor)), removed }
+}
+
+/** Bounds objects also contain width/height; never let those fields reach the strict anchor payload. */
+export function mapAnchorAt(containerId: string, regionId: string, cell: Cell): MapAnchor {
+  return { container_id: containerId, region_id: regionId, col: cell.col, row: cell.row }
 }

@@ -4,7 +4,9 @@ import { rectangleCells, regionBounds } from './map-geometry';
 import { normalizeMapLocationName, storageMapDraftSchema } from './map-schema';
 import { storageMapProposalRequestSchema } from './map-proposal-schema';
 import type { MapColorKey, MapRegion, StorageMapDraft, StorageMapSceneData } from './map-types';
-import type { MapRelation, StorageMapProposal, StorageMapProposalRequest } from './map-proposal-types';
+import type { BinaryMapRelation, MapRelation, StorageMapProposal, StorageMapProposalRequest } from './map-proposal-types';
+
+import { isBinaryRelation, isPositionRelation, layoutMapConstraints, normalizeBetweenRelations, relationPlaceKeys, relationSlots } from './map-proposal-constraints';
 
 type Rect = { col: number; row: number; width: number; height: number };
 type Place = { key: string; name: string; locationId: string | null };
@@ -13,25 +15,25 @@ type Edge = { from: number; to: number; distance: number };
 const COLORS: MapColorKey[] = ['green', 'yellow', 'blue', 'purple', 'pink', 'neutral'];
 const DEFAULT_PLACES = ['거실', '주방', '침실', '현관'];
 function fail(message: string, status = 400): never { throw new VisionError(message, status); }
-function axis(relation: MapRelation) { return relation.relation === 'above' || relation.relation === 'below' ? 'y' : 'x'; }
-function pair(relation: MapRelation) { return `${axis(relation)}:${[relation.subject, relation.target].sort().join(':')}`; }
-function direction(relation: MapRelation) {
+function axis(relation: BinaryMapRelation) { return relation.relation === 'above' || relation.relation === 'below' ? 'y' : 'x'; }
+function pair(relation: BinaryMapRelation) { return `${axis(relation)}:${[relation.subject, relation.target].sort().join(':')}`; }
+function direction(relation: BinaryMapRelation) {
   return relation.relation === 'right_of' || relation.relation === 'below' ? [relation.target, relation.subject] : [relation.subject, relation.target];
 }
 function mergeRelations(previous: MapRelation[], incoming: MapRelation[]): MapRelation[] {
-  const latestPairs = new Set(incoming.map(pair)), directions = new Map<string, string>(), seen = new Set<string>();
+  const latestSlots = new Set(incoming.flatMap(relationSlots)), directions = new Map<string, string>(), seen = new Set<string>();
   const unique: MapRelation[] = [];
   for (const relation of incoming) {
-    const key = pair(relation);
-    const orientation = direction(relation).join(':');
-    if (relation.relation !== 'next_to') {
-      if (directions.has(key) && directions.get(key) !== orientation) fail('같은 장소에 반대 방향 조건이 함께 있습니다. 충돌하는 조건을 정리해주세요');
+    const slots = relationSlots(relation);
+    const orientation = isBinaryRelation(relation) ? direction(relation).join(':') : JSON.stringify(relation);
+    if (!(isBinaryRelation(relation) && relation.relation === 'next_to')) for (const key of slots) {
+      if (directions.has(key) && directions.get(key) !== orientation) fail('같은 장소에 반대 방향이나 모순된 조건이 함께 있습니다. 충돌하는 조건을 정리해주세요');
       directions.set(key, orientation);
     }
-    const identity = relation.relation === 'next_to' ? `${key}:next` : `${key}:${orientation}`;
+    const identity = isBinaryRelation(relation) && relation.relation === 'next_to' ? `${slots[0]}:next` : `${slots.join('|')}:${orientation}`;
     if (!seen.has(identity)) { seen.add(identity); unique.push(relation); }
   }
-  const result = [...previous.filter(relation => !latestPairs.has(pair(relation))), ...unique];
+  const result = [...previous.filter(relation => !relationSlots(relation).some(slot => latestSlots.has(slot))), ...unique];
   if (result.length > 128) fail('공간 관계는 128개까지 제안할 수 있습니다. 조건을 줄여주세요', 422);
   return result;
 }
@@ -55,7 +57,7 @@ function solve(nodes: Node[], horizontal: Edge[], vertical: Edge[]): Rect[] | nu
   const result = nodes.map((node, i) => ({ ...node.rect, col: x[i], row: y[i] }));
   return result.some(rect => rect.col + rect.width > 64 || rect.row + rect.height > 64) ? null : result;
 }
-function groupLayout(nodes: Node[], relations: MapRelation[], assumptions: string[]): Rect[] {
+function groupLayout(nodes: Node[], relations: BinaryMapRelation[], assumptions: string[]): Rect[] {
   const indices = new Map(nodes.map((node, i) => [node.key, i]));
   let horizontal: Edge[] = [], vertical: Edge[] = [];
   for (const relation of relations) {
@@ -169,21 +171,31 @@ export function buildStorageMapProposal(scene: StorageMapSceneData, request: Sto
     return fail(`‘${reference}’ 장소를 찾을 수 없습니다. 기존 장소를 선택하거나 새 장소 이름을 먼저 지정해주세요`, 404);
   };
   const resolveRelation = (relation: MapRelation): MapRelation => {
-    const subject = resolve(relation.subject), target = resolve(relation.target);
+    const subject = resolve(relation.subject);
+    if (isPositionRelation(relation)) return { ...relation, subject: subject.key, target: 'map' };
+    const target = resolve(relation.target);
     if (subject.key === target.key) fail('같은 장소끼리의 공간 관계는 지정할 수 없습니다');
+    if (relation.relation === 'between') {
+      const other = resolve(relation.other_target);
+      if (new Set([subject.key, target.key, other.key]).size !== 3) fail('사이 관계에는 서로 다른 세 장소를 지정해주세요');
+      return { ...relation, subject: subject.key, target: target.key, other_target: other.key };
+    }
     return { ...relation, subject: subject.key, target: target.key };
   };
-  const removedPairs = new Set((input.remove_relations ?? []).map(removal => {
-    const subject = resolve(removal.subject), target = resolve(removal.target);
+  const removedPairs = (input.remove_relations ?? []).map(removal => {
+    const subject = resolve(removal.subject), target = removal.target === 'map' ? { key: 'map' } : resolve(removal.target);
     if (subject.key === target.key) fail('같은 장소끼리의 관계는 해제할 수 없습니다');
-    return [subject.key, target.key].sort().join(':');
+    return [subject.key, target.key];
+  });
+  const previous = (input.previous_relations ?? []).map(resolveRelation).filter(relation => !removedPairs.some(([subject, target]) => {
+    if (target === 'map') return isPositionRelation(relation) && relation.subject === subject;
+    const keys = relationPlaceKeys(relation); return keys.includes(subject) && keys.includes(target);
   }));
-  const previous = (input.previous_relations ?? []).map(resolveRelation).filter(relation => !removedPairs.has([relation.subject, relation.target].sort().join(':')));
-  const relations = mergeRelations(previous, (input.relations ?? []).map(resolveRelation));
+  let relations = mergeRelations(previous, (input.relations ?? []).map(resolveRelation));
   const wanted = new Set<string>();
   if (!input.draft || !draft.regions.length) for (const place of places) wanted.add(place.key);
   for (const pending of draft.new_locations) wanted.add(pending.client_location_key);
-  for (const relation of relations) { wanted.add(relation.subject); wanted.add(relation.target); }
+  for (const key of relations.flatMap(relationPlaceKeys)) wanted.add(key);
   const originalBounds = new Map(draft.regions.map(region => [region.id, regionBounds(region.cells)!]));
   for (const key of wanted) if (!draft.regions.some(region => (region.location_id ?? region.client_location_key) === key)) {
     const place = places.find(place => place.key === key)!;
@@ -191,7 +203,18 @@ export function buildStorageMapProposal(scene: StorageMapSceneData, request: Sto
   }
   if (draft.regions.length > 64) fail('지도는 최대 64개 구획까지 지원합니다. 먼저 포함할 장소를 직접 선택해주세요', 422);
   const nodes: Node[] = draft.regions.map(region => ({ key: (region.location_id ?? region.client_location_key)!, region, rect: regionBounds(region.cells)!, existing: originalBounds.has(region.id) }));
-  const involved = new Set(relations.flatMap(relation => [relation.subject, relation.target]));
+  relations = normalizeBetweenRelations(nodes, relations, assumptions);
+  if (relations.some(relation => !isBinaryRelation(relation))) {
+    const placed = layoutMapConstraints(nodes, relations, draft.columns, draft.rows, assumptions);
+    placed.rects.forEach((rect, i) => {
+      const region = nodes[i].region, old = originalBounds.get(region.id);
+      region.cells = rectangleCells({ col: rect.col, row: rect.row }, { col: rect.col + rect.width - 1, row: rect.row + rect.height - 1 });
+      if (old) draft.anchors = draft.anchors.map(anchor => anchor.region_id === region.id ? { ...anchor, col: anchor.col + rect.col - old.col, row: anchor.row + rect.row - old.row } : anchor);
+    });
+    draft.columns = placed.columns; draft.rows = placed.rows;
+  } else {
+    const binaryRelations = relations.filter(isBinaryRelation);
+  const involved = new Set(binaryRelations.flatMap(relation => [relation.subject, relation.target]));
   const fixed = nodes.filter(node => node.existing && !involved.has(node.key));
   const occupied = fixed.map(node => node.rect);
   const pending = nodes.filter(node => !fixed.includes(node));
@@ -201,11 +224,11 @@ export function buildStorageMapProposal(scene: StorageMapSceneData, request: Sto
     const keys = new Set([node.key]);
     for (let changed = true; changed;) {
       changed = false;
-      for (const relation of relations) if (keys.has(relation.subject) || keys.has(relation.target)) for (const key of [relation.subject, relation.target]) if (!keys.has(key)) { keys.add(key); changed = true; }
+      for (const relation of binaryRelations) if (keys.has(relation.subject) || keys.has(relation.target)) for (const key of [relation.subject, relation.target]) if (!keys.has(key)) { keys.add(key); changed = true; }
     }
     const group = pending.filter(candidate => keys.has(candidate.key));
     group.forEach(candidate => seen.add(candidate.key));
-    const local = groupLayout(group, relations.filter(relation => keys.has(relation.subject)), assumptions);
+    const local = groupLayout(group, binaryRelations.filter(relation => keys.has(relation.subject)), assumptions);
     const placed = placeGroup(group, local, occupied, draft.columns, draft.rows);
     placed.forEach((rect, i) => {
       const region = group[i].region, old = originalBounds.get(region.id);
@@ -214,6 +237,7 @@ export function buildStorageMapProposal(scene: StorageMapSceneData, request: Sto
       draft.columns = Math.max(draft.columns, rect.col + rect.width); draft.rows = Math.max(draft.rows, rect.row + rect.height);
       occupied.push(rect);
     });
+  }
   }
   for (const container of scene.containers) {
     if (!container.location_id || draft.anchors.some(anchor => anchor.container_id === container.id)) continue;
@@ -230,10 +254,15 @@ export function buildStorageMapProposal(scene: StorageMapSceneData, request: Sto
   const valid = storageMapDraftSchema.safeParse(draft);
   if (!valid.success) fail('유효한 지도 제안을 만들지 못했습니다. 구획이나 장소 연결을 확인해주세요', 422);
   const names = new Map(places.map(place => [place.key, place.name]));
-  const labels = { left_of: '왼쪽', right_of: '오른쪽', above: '위쪽', below: '아래쪽', next_to: '옆' };
+  const labels = { left_of: '왼쪽', right_of: '오른쪽', above: '위쪽', below: '아래쪽', next_to: '옆', at_left_edge: '지도 왼쪽 경계', at_right_edge: '지도 오른쪽 경계', at_top_edge: '지도 위쪽 경계', at_bottom_edge: '지도 아래쪽 경계', center: '지도 중앙' };
+  const describe = (relation: MapRelation) => {
+    if (relation.relation === 'between') return `${names.get(relation.subject)}: ${names.get(relation.target)}와 ${names.get(relation.other_target)} 사이 (${relation.axis === 'vertical' ? '위→아래' : '왼쪽→오른쪽'})`;
+    if (isPositionRelation(relation)) return `${names.get(relation.subject)}: ${labels[relation.relation]}`;
+    return `${names.get(relation.subject)}: ${names.get(relation.target)} ${labels[relation.relation]}`;
+  };
   return {
     proposal_id: randomUUID(), base: { map_revision: scene.map?.revision ?? null, draft_id: input.draft?.map_draft_id ?? null, draft_revision: input.draft?.draft_revision ?? null }, draft,
-    relations, relation_descriptions: relations.map(relation => `${names.get(relation.subject)}: ${names.get(relation.target)} ${labels[relation.relation]}`), assumptions: [...new Set(assumptions)],
+    relations, relation_descriptions: relations.map(describe), assumptions: [...new Set(assumptions)],
     recommended_location_keys: draft.new_locations.map(location => location.client_location_key), suggested_anchor_ids: suggested,
     source: { location_count: scene.locations.length, container_count: scene.containers.length, unassigned_container_count: unassigned },
     preview: { ...scene, map: { id: scene.map?.id ?? draft.map_draft_id, name: draft.name, columns: draft.columns, rows: draft.rows, revision: scene.map?.revision ?? 0, schema_version: 1, updated_at: scene.evidence_at }, regions: draft.regions.map(region => ({ ...region, location_name: names.get((region.location_id ?? region.client_location_key)!)! })), anchors: draft.anchors, resolution: null },

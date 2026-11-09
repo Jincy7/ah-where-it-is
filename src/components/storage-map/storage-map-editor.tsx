@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import type { PointerEvent } from 'react'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Hand, Loader2, MapPin, Pencil, Plus, Save, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +10,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import type { MapContainer, MapLocation, MapRegion, StorageMapDraft, StorageMapSceneData } from '@/lib/storage/map-types'
 import { StorageMapScene } from './storage-map-scene'
-import { containsCell, gridResizeProblem, rectangleCells, rectangleProblem, regionBounds, selectionRectangle, transformRegion, type Cell, type Rectangle } from './editor-state'
+import { StorageMapCanvas, type StorageMapCanvasHandle } from './storage-map-canvas'
+import { containsCell, gridResizeProblem, mapAnchorAt, rectangleCells, rectangleProblem, regionBounds, selectionRectangle, transformRegion, type Cell, type Rectangle } from './editor-state'
 
 export function createMapDraft(scene: StorageMapSceneData | null): StorageMapDraft {
   return { base_map_revision: scene?.map?.revision ?? null, map_draft_id: crypto.randomUUID(), draft_revision: 1, name: scene?.map?.name ?? '우리 집 지도', columns: scene?.map?.columns ?? 12, rows: scene?.map?.rows ?? 8, regions: scene?.regions.map(({ id, location_id, client_location_key, color_key, cells }) => ({ id, location_id, client_location_key, color_key, cells: cells.map(cell => ({ ...cell })) })) ?? [], new_locations: [], anchors: scene?.anchors.map(anchor => ({ ...anchor })) ?? [] }
@@ -57,9 +57,8 @@ export function StorageMapEditor({ open, onOpenChange, scene, draft, onDraftChan
   const [notice, setNotice] = useState('')
   const [closeWarning, setCloseWarning] = useState(false)
   const [removeId, setRemoveId] = useState<string | null>(null)
-  const drag = useRef<{ pointerId: number; start: Cell } | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
+  const canvas = useRef<StorageMapCanvasHandle>(null)
+  const viewportPosition = useRef({ left: 0, top: 0 })
   if (!draft) return null
   const disabled = locked || busy || proposing || proposalDisabled
   const regions = draftSceneRegions(draft, locations)
@@ -76,36 +75,9 @@ export function StorageMapEditor({ open, onOpenChange, scene, draft, onDraftChan
   function selectRegion(id: string) {
     const region = draft!.regions.find(candidate => candidate.id === id)
     if (!region) return
-    setSelectedId(id); setSelection(null); setBounds(regionBounds(region.cells)); setLocationChoice(region.location_id ?? (region.client_location_key ? `draft:${region.client_location_key}` : '')); setAnchorCell(regionBounds(region.cells)); setError(''); setNotice('')
+    setSelectedId(id); setSelection(null); setBounds(regionBounds(region.cells)); setLocationChoice(region.location_id ?? (region.client_location_key ? `draft:${region.client_location_key}` : '')); setAnchorCell({ col: regionBounds(region.cells).col, row: regionBounds(region.cells).row }); setError(''); setNotice('')
   }
-  function cellAt(event: PointerEvent<SVGSVGElement>): Cell {
-    const rect = event.currentTarget.getBoundingClientRect()
-    return { col: Math.max(0, Math.min(draft!.columns - 1, Math.floor((event.clientX - rect.left) / rect.width * draft!.columns))), row: Math.max(0, Math.min(draft!.rows - 1, Math.floor((event.clientY - rect.top) / rect.height * draft!.rows))) }
-  }
-  function pointerDown(event: PointerEvent<SVGSVGElement>) {
-    if (event.button !== 0 || !event.isPrimary) return
-    if (mode === 'pan') {
-      if (event.pointerType === 'mouse' && scrollRef.current) { pan.current = { x: event.clientX, y: event.clientY, left: scrollRef.current.scrollLeft, top: scrollRef.current.scrollTop }; event.currentTarget.setPointerCapture(event.pointerId) }
-      return
-    }
-    if (disabled) return
-    const cell = cellAt(event)
-    const occupied = draft!.regions.find(region => containsCell(region.cells, cell))
-    if (occupied) { selectRegion(occupied.id); return }
-    event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
-    drag.current = { pointerId: event.pointerId, start: cell }; setSelectedId(null); setSelection(selectionRectangle(cell, cell)); setLocationChoice(''); setError('')
-  }
-  function pointerMove(event: PointerEvent<SVGSVGElement>) {
-    if (pan.current && scrollRef.current) { scrollRef.current.scrollLeft = pan.current.left - event.clientX + pan.current.x; scrollRef.current.scrollTop = pan.current.top - event.clientY + pan.current.y; return }
-    if (!drag.current || event.pointerId !== drag.current.pointerId || disabled) return
-    setSelection(selectionRectangle(drag.current.start, cellAt(event)))
-  }
-  function pointerUp(event: PointerEvent<SVGSVGElement>) {
-    if (drag.current && event.pointerId === drag.current.pointerId) setSelection(selectionRectangle(drag.current.start, cellAt(event)))
-    drag.current = null; pan.current = null
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-  function clearSelection() { drag.current = null; pan.current = null; setSelection(null) }
+  function clearSelection() { canvas.current?.cancelInteraction(); setSelection(null) }
   function assignLocation() {
     if (disabled || (!selected && !selection)) return
     if (selectionError) { setError(selectionError); return }
@@ -145,7 +117,7 @@ export function StorageMapEditor({ open, onOpenChange, scene, draft, onDraftChan
     if (!container) { setError('보관함을 선택해주세요.'); return }
     if (container.location_id !== selected.location_id || !selected.location_id) { setError('다른 장소의 보관함입니다. 먼저 보관함 관리에서 장소 변경안을 확인해주세요.'); return }
     if (![anchorCell.col, anchorCell.row].every(Number.isInteger) || !containsCell(selected.cells, anchorCell)) { setError('선택한 구획 안의 칸을 지정해주세요.'); return }
-    update({ ...draft!, anchors: [...draft!.anchors.filter(anchor => anchor.container_id !== container.id), { container_id: container.id, region_id: selected.id, ...anchorCell }] })
+    update({ ...draft!, anchors: [...draft!.anchors.filter(anchor => anchor.container_id !== container.id), mapAnchorAt(container.id, selected.id, anchorCell)] })
     setNotice('표식을 배치했습니다. 같은 칸의 보관함은 묶어서 표시합니다.')
   }
   function requestClose(next: boolean) {
@@ -160,15 +132,19 @@ export function StorageMapEditor({ open, onOpenChange, scene, draft, onDraftChan
     { label: '구획 내 위치 미지정', items: containers.filter(container => container.location_id && draft.regions.some(region => region.location_id === container.location_id) && !draft.anchors.some(anchor => anchor.container_id === container.id)) },
   ]
   return <>
-    <Dialog open={open} onOpenChange={requestClose}><DialogContent className="max-h-[92dvh] overflow-y-auto p-4 sm:max-w-5xl sm:p-6" onEscapeKeyDown={event => { if (selection || drag.current) { event.preventDefault(); clearSelection() } }}>
-      <DialogHeader><DialogTitle>보관 지도 편집</DialogTitle><DialogDescription>빈 칸을 드래그해 구획을 만들고 장소에 연결하세요. 1칸은 실제 길이가 아닌 배치 단위입니다.</DialogDescription></DialogHeader>
+    <Dialog open={open} onOpenChange={requestClose}><DialogContent className="max-h-[92dvh] overflow-y-auto p-4 sm:max-w-5xl sm:p-6" onEscapeKeyDown={event => { if (canvas.current?.cancelInteraction() || selection) { event.preventDefault(); clearSelection() } }}>
+      <DialogHeader><DialogTitle>보관 지도 편집</DialogTitle><DialogDescription>빈 칸을 드래그해 구획을 만들고, 구획을 끌어 이동하세요. 선택한 구획의 손잡이로 크기를 바꿀 수 있습니다.</DialogDescription></DialogHeader>
       {onPropose && <div className="space-y-1"><Button variant="outline" className="min-h-11" disabled={disabled} onClick={onPropose}>{proposing ? <Loader2 className="size-4 animate-spin" /> : <MapPin className="size-4" />}기본 배치 제안</Button><p className="text-xs text-muted-foreground">현재 기록과 초안을 바탕으로 대화에서 배치를 제안합니다. AI 키 없이도 사용할 수 있습니다.</p></div>}
       {locked && <div className="space-y-2 rounded-md border bg-muted p-3 text-sm"><p>확인 중인 지도 변경안이 있어 편집이 잠겨 있습니다.</p>{onEditPrepared && <Button variant="outline" className="min-h-11" disabled={busy} onClick={() => void onEditPrepared().catch(reason => setError(reason instanceof Error ? reason.message : '변경안 취소 결과를 확인해주세요.'))}><Pencil className="size-4" />변경안 수정</Button>}</div>}
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2"><Button variant={mode === 'draw' ? 'default' : 'outline'} className="min-h-11" disabled={disabled} onClick={() => { setMode('draw'); clearSelection() }} aria-pressed={mode === 'draw'}><Pencil className="size-4" />그리기</Button><Button variant={mode === 'pan' ? 'default' : 'outline'} className="min-h-11" onClick={() => { setMode('pan'); clearSelection() }} aria-pressed={mode === 'pan'}><Hand className="size-4" />화면 이동</Button><div className="ml-auto flex gap-1"><Button size="icon" className="size-11" variant="outline" aria-label="지도 축소" disabled={zoom <= 0.5} onClick={() => setZoom(value => Math.max(.5, value - .25))}><ZoomOut /></Button><Button size="icon" className="size-11" variant="outline" aria-label="지도 확대" disabled={zoom >= 3} onClick={() => setZoom(value => Math.min(3, value + .25))}><ZoomIn /></Button></div></div>
-          <div ref={scrollRef} className="max-h-[50dvh] overflow-auto rounded-lg border" tabIndex={0} aria-label="지도 편집 영역"><div style={{ width: Math.max(280, draft.columns * 36) * zoom }}><StorageMapScene columns={draft.columns} rows={draft.rows} regions={regions} anchors={draft.anchors} containers={containers} sceneLabel="편집 중인 지도 초안" sceneDescription="아직 저장하지 않은 배치입니다. 추천 표식이 포함될 수 있으며 실제 현재 위치를 자동으로 확인하지 않습니다." selectedRegionId={selectedId} selection={selection} invalidSelection={!!selectionError} showGrid className={mode === 'draw' && !disabled ? 'touch-none select-none' : 'touch-auto'} onRegionSelect={selectRegion} onAnchorSelect={ids => { const anchor = draft.anchors.find(item => item.container_id === ids[0]); if (anchor) selectRegion(anchor.region_id); setAnchorChoice(ids[0]); setNotice(ids.length > 1 ? `이 칸의 보관함 ${ids.length}개: ${ids.map(id => containers.find(container => container.id === id)?.name ?? '보관함').join(', ')}` : '') }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={clearSelection} /></div></div>
-          <p className="text-xs text-muted-foreground">{draft.columns}×{draft.rows}칸 · 좌측 위 (0, 0) · {Math.round(zoom * 100)}% · {mode === 'draw' ? 'Esc로 선택 취소' : '드래그하거나 스크롤해 화면 이동'}</p>
+          <StorageMapCanvas key={`${draft.map_draft_id}:${draft.draft_revision}:${mode}:${zoom}:${disabled}:${open}`} ref={canvas} viewportPosition={viewportPosition} draft={draft} regions={regions} containers={containers} selectedRegionId={selectedId} selection={selection} mode={mode} disabled={disabled} zoom={zoom}
+            onSelectRegion={selectRegion} onSelectAnchors={ids => { setAnchorChoice(ids[0]); setNotice(ids.length > 1 ? `이 칸의 보관함 ${ids.length}개: ${ids.map(id => containers.find(container => container.id === id)?.name ?? '보관함').join(', ')}` : '') }}
+            onSelectRange={rectangle => { setSelection(rectangle); setSelectedId(null); setLocationChoice(''); setError('') }} onError={setError}
+            onCommit={(next, removed, kind) => { onDraftChange(next); setError(''); const region = next.regions.find(value => value.id === selectedId); if (region) setBounds(regionBounds(region.cells)); setNotice(removed.length ? `구획 밖 표식 ${removed.length}개를 미배치로 돌립니다: ${removed.map(anchor => containers.find(container => container.id === anchor.container_id)?.name ?? '보관함').join(', ')}. 저장 전 변경안에서 확인하세요.` : kind === 'move' ? '구획과 내부 표식을 함께 이동했습니다. 아직 저장되지 않았습니다.' : '구획 크기를 조절했습니다. 아직 저장되지 않았습니다.') }} />
+          <p className="text-xs text-muted-foreground">{draft.columns}×{draft.rows}칸 · 좌측 위 (0, 0) · {Math.round(zoom * 100)}% · {mode === 'draw' ? '구획 드래그로 이동 · 손잡이로 크기 조절 · Esc로 취소' : '드래그하거나 스크롤해 화면 이동'}</p>
+          <p className="text-xs text-muted-foreground">1칸은 배치 단위입니다. 키보드로는 아래 범위 지정과 구획 이동·크기 입력을 사용할 수 있습니다.</p>
           <fieldset disabled={disabled} className="space-y-3 rounded-md border p-3"><legend className="px-1 text-sm font-medium">키보드로 구획 지정</legend><div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><NumberField label="시작 열" value={coordinates.startCol} max={draft.columns - 1} onChange={startCol => setCoordinates(value => ({ ...value, startCol }))} /><NumberField label="시작 행" value={coordinates.startRow} max={draft.rows - 1} onChange={startRow => setCoordinates(value => ({ ...value, startRow }))} /><NumberField label="끝 열" value={coordinates.endCol} max={draft.columns - 1} onChange={endCol => setCoordinates(value => ({ ...value, endCol }))} /><NumberField label="끝 행" value={coordinates.endRow} max={draft.rows - 1} onChange={endRow => setCoordinates(value => ({ ...value, endRow }))} /></div><Button variant="outline" className="min-h-11" onClick={() => { if (!Object.values(coordinates).every(Number.isInteger)) { setError('시작·끝 셀을 정수로 입력해주세요.'); return } setSelectedId(null); setLocationChoice(''); setSelection(selectionRectangle({ col: coordinates.startCol, row: coordinates.startRow }, { col: coordinates.endCol, row: coordinates.endRow })) }}><Plus className="size-4" />범위 선택</Button></fieldset>
           {regions.length > 0 && <div className="flex flex-wrap gap-2" aria-label="구획 목록">{regions.map((region, index) => <Button key={region.id} variant={selectedId === region.id ? 'secondary' : 'outline'} className="min-h-11 max-w-full" onClick={() => selectRegion(region.id)}><MapPin className="size-4" /><span className="truncate">{index + 1}. {region.location_name}</span></Button>)}</div>}
           <details className="rounded-md border p-3 text-sm"><summary className="cursor-pointer py-1 font-medium">미배치 보관함 {unplacedGroups.reduce((sum, group) => sum + group.items.length, 0)}개</summary><div className="mt-3 space-y-3">{unplacedGroups.map(group => <div key={group.label}><p className="text-xs font-medium text-muted-foreground">{group.label} · {group.items.length}개</p><p className="mt-1 break-words">{group.items.map(container => container.name).join(', ') || '없음'}</p></div>)}</div></details>

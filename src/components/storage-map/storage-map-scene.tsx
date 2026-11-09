@@ -33,6 +33,7 @@ export interface StorageMapSceneProps {
   onPointerMove?: (event: PointerEvent<SVGSVGElement>) => void
   onPointerUp?: (event: PointerEvent<SVGSVGElement>) => void
   onPointerCancel?: (event: PointerEvent<SVGSVGElement>) => void
+  onLostPointerCapture?: (event: PointerEvent<SVGSVGElement>) => void
   children?: ReactNode
   sceneLabel?: string
   sceneDescription?: string

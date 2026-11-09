@@ -163,3 +163,95 @@ test('duplicate normalization does not change exact-name resolution or actual lo
   assert.equal(proposal.relations[0].subject, study); assert.equal(proposal.relations[0].target, living);
   assertLeft(proposal.draft, study, living);
 });
+
+test('compound household description keeps between, boundary, center and every sibling direction', () => {
+  const small = randomUUID(), shoes = randomUUID();
+  const source = empty(); source.locations = [{ id: small, name: '작은방', version: 1, container_count: 0, item_count: 0 }, { id: shoes, name: '신발장', version: 1, container_count: 0, item_count: 0 }];
+  const proposal = buildStorageMapProposal(source, {
+    new_location_names: ['화장실', '거실', '주방', '안방', '옷방', '옷방 베란다'],
+    relations: [
+      { subject: '화장실', relation: 'between', target: small, other_target: shoes, axis: 'auto' },
+      { subject: '화장실', relation: 'at_right_edge', target: 'map' },
+      { subject: '거실', relation: 'center', target: 'map' },
+      { subject: '주방', relation: 'below', target: '거실' },
+      { subject: '주방', relation: 'left_of', target: shoes },
+      { subject: '안방', relation: 'left_of', target: '거실' },
+      { subject: '옷방', relation: 'left_of', target: '주방' },
+      { subject: '옷방 베란다', relation: 'left_of', target: '주방' },
+    ],
+  });
+  const id = (name: string) => proposal.draft.new_locations.find(location => location.name === name)!.client_location_key;
+  assert.equal(proposal.draft.new_locations.length, 6); assert.equal(proposal.draft.regions.length, 8);
+  assert.equal(proposal.draft.regions.find(region => region.location_id === small)?.location_id, small);
+  assertAbove(proposal.draft, small, id('화장실')); assertAbove(proposal.draft, id('화장실'), shoes);
+  const bathroom = bounds(proposal.draft, id('화장실')), livingRoom = bounds(proposal.draft, id('거실'));
+  assert.equal(bathroom.col + bathroom.width, proposal.draft.columns);
+  assert.ok(Math.abs(livingRoom.col + livingRoom.width / 2 - proposal.draft.columns / 2) <= .5);
+  assert.ok(Math.abs(livingRoom.row + livingRoom.height / 2 - proposal.draft.rows / 2) <= .5);
+  assertAbove(proposal.draft, id('거실'), id('주방')); assertLeft(proposal.draft, id('주방'), shoes);
+  assertLeft(proposal.draft, id('안방'), id('거실')); assertLeft(proposal.draft, id('옷방'), id('주방')); assertLeft(proposal.draft, id('옷방 베란다'), id('주방'));
+  assert.equal(proposal.relations.length, 8); assert.equal(proposal.relation_descriptions.length, 8);
+  assert.ok(proposal.assumptions.some(text => /사이/.test(text) && /세로/.test(text)));
+  assert.equal(storageMapDraftSchema.safeParse(proposal.draft).success, true);
+});
+
+test('between supports explicit horizontal axes and map alignment corrections without dropped constraints', () => {
+  const first = buildStorageMapProposal(scene(), { relations: [{ subject: study, relation: 'between', target: living, other_target: kitchen, axis: 'horizontal' }, { subject: study, relation: 'at_top_edge', target: 'map' }] });
+  assertLeft(first.draft, living, study); assertLeft(first.draft, study, kitchen);
+  assert.equal(bounds(first.draft, study).row, 0);
+  const second = buildStorageMapProposal(scene(), { draft: first.draft, previous_relations: first.relations, relations: [{ subject: study, relation: 'at_bottom_edge', target: 'map' }] });
+  assertLeft(second.draft, living, study); assertLeft(second.draft, study, kitchen);
+  assert.equal(bounds(second.draft, study).row + bounds(second.draft, study).height, second.draft.rows);
+  const removed = buildStorageMapProposal(scene(), { draft: second.draft, previous_relations: second.relations, remove_relations: [{ subject: study, target: 'map' }] });
+  assert.equal(removed.relations.length, 1); assert.equal(removed.relations[0].relation, 'between');
+  assert.throws(() => buildStorageMapProposal(scene(), { relations: [{ subject: study, relation: 'between', target: living, other_target: study }] }), /같은|서로 다른/);
+  assert.throws(() => buildStorageMapProposal(scene(), { relations: [{ subject: study, relation: 'center', target: 'map' }, { subject: study, relation: 'at_right_edge', target: 'map' }] }), /충돌|모순|반대/);
+});
+test('absolute center and boundary relations are solved at a feasible small grid, not rejected at 64 cells', () => {
+  const source = scene();
+  source.map = { id: randomUUID(), name: '우리 집', columns: 12, rows: 8, revision: 1, schema_version: 1, updated_at: source.evidence_at };
+  source.regions = [{ id: randomUUID(), location_id: study, client_location_key: null, location_name: '서재', color_key: 'green', cells: rectangleCells({ col: 0, row: 0 }, { col: 5, row: 2 }) }, { id: randomUUID(), location_id: living, client_location_key: null, location_name: '거실', color_key: 'yellow', cells: rectangleCells({ col: 6, row: 0 }, { col: 8, row: 2 }) }];
+  const proposal = buildStorageMapProposal(source, { relations: [{ subject: study, relation: 'center', target: 'map' }, { subject: living, relation: 'at_right_edge', target: 'map' }, { subject: study, relation: 'next_to', target: living }] });
+  assert.equal(proposal.draft.columns, 12); assert.equal(proposal.draft.rows, 8);
+  const a = bounds(proposal.draft, study), b = bounds(proposal.draft, living);
+  assert.equal(a.col, 3); assert.equal(a.col + a.width, b.col); assert.equal(b.col + b.width, 12);
+});
+test('between endpoint order follows explicit directional clauses before a guessed order', () => {
+  const proposal = buildStorageMapProposal(scene(), { relations: [{ subject: study, relation: 'between', target: living, other_target: kitchen, axis: 'auto' }, { subject: study, relation: 'right_of', target: kitchen }] });
+  assertLeft(proposal.draft, kitchen, study); assertLeft(proposal.draft, study, living);
+  const between = proposal.relations.find(relation => relation.relation === 'between');
+  assert.ok(between && between.relation === 'between'); assert.equal(between.target, kitchen); assert.equal(between.other_target, living);
+});
+test('screenshot-sized existing regions retain dimensions and anchor offsets through the full narrative', () => {
+  const small = randomUUID(), shoes = randomUUID(), smallRegion = randomUUID(), shoesRegion = randomUUID(), smallBox = randomUUID(), shoesBox = randomUUID();
+  const source = empty();
+  source.locations = [{ id: small, name: '작은방', version: 1, container_count: 1, item_count: 0 }, { id: shoes, name: '신발장', version: 1, container_count: 1, item_count: 0 }];
+  source.containers = [{ id: smallBox, name: '작은방 보관함', location_id: small, version: 1, item_count: 0 }, { id: shoesBox, name: '신발 보관함', location_id: shoes, version: 1, item_count: 0 }];
+  const current: StorageMapDraft = { base_map_revision: null, map_draft_id: randomUUID(), draft_revision: 4, name: '우리 집', columns: 12, rows: 8, new_locations: [],
+    regions: [{ id: smallRegion, location_id: small, client_location_key: null, color_key: 'green', cells: rectangleCells({ col: 6, row: 0 }, { col: 10, row: 2 }) }, { id: shoesRegion, location_id: shoes, client_location_key: null, color_key: 'yellow', cells: rectangleCells({ col: 6, row: 7 }, { col: 8, row: 7 }) }],
+    anchors: [{ container_id: smallBox, region_id: smallRegion, col: 8, row: 1 }, { container_id: shoesBox, region_id: shoesRegion, col: 7, row: 7 }],
+  };
+  const original = structuredClone(current);
+  const proposal = buildStorageMapProposal(source, { draft: current, new_location_names: ['화장실', '거실', '주방', '안방', '옷방', '옷방 베란다'], relations: [
+    { subject: '화장실', relation: 'between', target: small, other_target: shoes, axis: 'auto' }, { subject: '화장실', relation: 'at_right_edge', target: 'map' }, { subject: '거실', relation: 'center', target: 'map' },
+    { subject: '주방', relation: 'below', target: '거실' }, { subject: '주방', relation: 'left_of', target: shoes }, { subject: '안방', relation: 'left_of', target: '거실' }, { subject: '옷방', relation: 'left_of', target: '주방' }, { subject: '옷방 베란다', relation: 'left_of', target: '주방' },
+  ] });
+  const id = (name: string) => proposal.draft.new_locations.find(location => location.name === name)!.client_location_key;
+  const smallBounds = bounds(proposal.draft, small), shoeBounds = bounds(proposal.draft, shoes), bathroom = bounds(proposal.draft, id('화장실')), livingRoom = bounds(proposal.draft, id('거실'));
+  assert.deepEqual([smallBounds.width, smallBounds.height, shoeBounds.width, shoeBounds.height], [5, 3, 3, 1]);
+  assertAbove(proposal.draft, small, id('화장실')); assertAbove(proposal.draft, id('화장실'), shoes);
+  assert.equal(bathroom.col + bathroom.width, proposal.draft.columns);
+  assert.ok(Math.abs(livingRoom.col + livingRoom.width / 2 - proposal.draft.columns / 2) <= .5); assert.ok(Math.abs(livingRoom.row + livingRoom.height / 2 - proposal.draft.rows / 2) <= .5);
+  assertAbove(proposal.draft, id('거실'), id('주방')); assertLeft(proposal.draft, id('주방'), shoes); assertLeft(proposal.draft, id('안방'), id('거실')); assertLeft(proposal.draft, id('옷방'), id('주방')); assertLeft(proposal.draft, id('옷방 베란다'), id('주방'));
+  assert.equal(proposal.relations.length, 8); assert.equal(proposal.draft.regions.length, 8); assert.equal(proposal.draft.new_locations.length, 6);
+  assert.equal(proposal.draft.anchors.length, 2);
+  for (const old of original.anchors) {
+    const after = proposal.draft.anchors.find(anchor => anchor.container_id === old.container_id)!;
+    const beforeRegion = regionBounds(original.regions.find(region => region.id === old.region_id)!.cells)!, afterRegion = regionBounds(proposal.draft.regions.find(region => region.id === old.region_id)!.cells)!;
+    assert.deepEqual([after.col - afterRegion.col, after.row - afterRegion.row], [old.col - beforeRegion.col, old.row - beforeRegion.row]);
+    assert.ok(proposal.draft.regions.find(region => region.id === after.region_id)!.cells.some(cell => cell.col === after.col && cell.row === after.row));
+  }
+  assert.equal(storageMapDraftSchema.safeParse(proposal.draft).success, true, 'save validation includes non-overlap, bounds and anchors');
+  assert.equal(proposal.draft.map_draft_id, original.map_draft_id); assert.equal(proposal.draft.draft_revision, 5); assert.deepEqual(current, original);
+  console.log(`Screenshot geometry: ${proposal.draft.columns}×${proposal.draft.rows}, 8 regions, 8 relations, 2 translated anchors`);
+});

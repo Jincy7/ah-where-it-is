@@ -124,3 +124,17 @@ test('sequential proposal tools advance draft identity and relation context with
   assert.equal(result.events.length,2);
   assert.equal(context.mapProposal?.draft.draft_revision,7);
 });
+
+test('map guidance covers narrative new places, between, boundaries, center and compound siblings', () => {
+  const instructions = agentInstructions(contextSchema.parse({}));
+  assert.match(instructions, /between/); assert.match(instructions, /other_target/); assert.match(instructions, /at_right_edge/); assert.match(instructions, /center/);
+  assert.match(instructions, /서술.*새 장소|새 장소.*서술/);
+  assert.match(instructions, /각각|모두/); assert.match(instructions, /옷방 베란다/);
+});
+test('semantic tool accepts rich constraints without coordinates and preserves them in context', async () => {
+  const fixture = toolFixture();
+  const relations = [{ subject: '화장실', relation: 'between', target: id, other_target: other, axis: 'auto' }, { subject: '화장실', relation: 'at_right_edge', target: 'map' }, { subject: '거실', relation: 'center', target: 'map' }];
+  await fixture.tool({ request_json: JSON.stringify({ new_location_names: ['화장실', '거실'], relations }) });
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.calls[0])).relations, relations);
+  assert.equal(contextSchema.safeParse({ mapProposal: { draft, previous_relations: relations } }).success, true);
+});
