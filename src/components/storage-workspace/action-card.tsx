@@ -1,15 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, CheckCircle2, Loader2, RefreshCw, X, AlertTriangle } from 'lucide-react'
+import { Check, CheckCircle2, Loader2, RefreshCw, X, AlertTriangle, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel } from '@/components/ui/alert-dialog'
 import type { StorageAction, WorkspaceContainer, WorkspaceLocation } from '@/lib/storage/types'
+import { StorageMapPreview } from '@/components/storage-map/storage-map-preview'
 
-const labels: Record<string, string> = { name: '이름', description: '설명', quantity: '수량', container_id: '보관함', container_name: '보관함', location_id: '장소', location_name: '장소', items: '등록 물품', cover_media_id: '대표 사진', item_count: '물품 수', containers: '포함된 보관함' }
+const labels: Record<string, string> = { name: '이름', description: '설명', quantity: '수량', container_id: '보관함', container_name: '보관함', location_id: '장소', location_name: '장소', items: '등록 물품', cover_media_id: '대표 사진', item_count: '물품 수', containers: '포함된 보관함', map_regions: '제거할 지도 구획', removed_anchors: '위치 해제할 표식', affected_regions: '제거할 지도 구획' }
 function Summary({ value, containers, locations, type }: { value: Record<string, unknown> | null; containers: WorkspaceContainer[]; locations: WorkspaceLocation[]; type: StorageAction['type'] }) {
   if (!value) return <p className="text-sm text-muted-foreground">없음</p>
+  if (type === 'save_storage_map') return <StorageMapPreview value={value} />
   return <dl className="space-y-2 text-sm">{Object.entries(value).filter(([key]) => key in labels && !(key === 'container_id' && 'container_name' in value) && !(key === 'container_name' && type.endsWith('_container'))).map(([key, raw]) => {
     let display = String(raw ?? '없음')
     if (key === 'container_id' || key === 'container_name') {
@@ -20,16 +22,18 @@ function Summary({ value, containers, locations, type }: { value: Record<string,
     if (key === 'cover_media_id') display = raw ? '사진 함께 보관' : '사진 없음'
     if (key === 'items' && Array.isArray(raw)) display = raw.map(v => `${v.name} ${v.quantity}개`).join(', ')
     if (key === 'containers' && Array.isArray(raw)) display = raw.map(v => typeof v === 'object' && v !== null && 'name' in v ? String(v.name) : String(v)).join(', ') || '없음'
+    if ((key === 'map_regions' || key === 'affected_regions' || key === 'removed_anchors') && Array.isArray(raw)) display = raw.map(v => typeof v === 'object' && v !== null ? String(v.location_name ?? v.container_name ?? v.name ?? v.id ?? '지도 연결') : String(v)).join(', ') || '없음'
     return <div key={key} className="grid grid-cols-[5rem_1fr] gap-2"><dt className="text-muted-foreground">{labels[key]}</dt><dd className="break-words">{display}</dd></div>
   })}</dl>
 }
 
-export function ActionCard({ action, containers, locations, busy, uncertain, error, interactive = true, onConfirm, onCancel, onRefresh, onReprepare, onDismiss }: {
+export function ActionCard({ action, containers, locations, busy, uncertain, uncertainOperation = 'confirm', error, interactive = true, onConfirm, onCancel, onRefresh, onReprepare, onDismiss, onEditMap }: {
   action: StorageAction
   containers: WorkspaceContainer[]
   locations: WorkspaceLocation[]
   busy: boolean
   uncertain: boolean
+  uncertainOperation?: 'confirm' | 'cancel'
   error: string
   interactive?: boolean
   onConfirm: () => Promise<void>
@@ -37,6 +41,7 @@ export function ActionCard({ action, containers, locations, busy, uncertain, err
   onRefresh: () => Promise<void>
   onReprepare: () => Promise<void>
   onDismiss: () => void
+  onEditMap?: () => Promise<void>
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const destructive = action.type.startsWith('delete_')
@@ -53,9 +58,10 @@ export function ActionCard({ action, containers, locations, busy, uncertain, err
     {destructive && !completed && <p className="text-sm text-destructive">삭제한 기록은 되돌릴 수 없습니다. 위 영향 범위를 확인해주세요.</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {error && !uncertain && action.status === 'prepared' && <Button variant="outline" disabled={busy} onClick={() => void onReprepare()}><RefreshCw className="size-4" />최신 기록으로 변경안 다시 만들기</Button>}
-    {uncertain && <p role="status" className="text-sm text-muted-foreground">응답을 받지 못했습니다. 내용은 잠겨 있으며 같은 작업으로 결과 확인·재시도합니다.</p>}
+    {uncertain && <p role="status" className="text-sm text-muted-foreground">{uncertainOperation === 'cancel' ? '취소 응답을 받지 못했습니다. 취소 결과를 확인하거나 취소만 다시 요청할 수 있습니다.' : '저장 응답을 받지 못했습니다. 내용은 잠겨 있으며 같은 작업으로 결과 확인·재시도합니다.'}</p>}
+    {onEditMap && !uncertain && <Button variant="outline" disabled={busy} onClick={() => void onEditMap()}><Pencil className="size-4" />변경안 수정</Button>}
     {action.status === 'prepared' ? <div className="flex flex-wrap gap-2">
-      <Button disabled={busy} variant={destructive ? 'destructive' : 'default'} onClick={() => { if (destructive && !uncertain) setDeleteOpen(true); else void onConfirm() }}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}{uncertain ? '같은 작업 재시도' : destructive ? '삭제 확인' : (action.type === 'move_item' || action.type === 'move_items') ? '이동 확인' : '저장 확인'}</Button>
+      <Button disabled={busy} variant={destructive ? 'destructive' : 'default'} onClick={() => { if (destructive && !uncertain) setDeleteOpen(true); else void onConfirm() }}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}{uncertain ? (uncertainOperation === 'cancel' ? '취소 다시 요청' : '같은 저장 재시도') : destructive ? '삭제 확인' : (action.type === 'move_item' || action.type === 'move_items') ? '이동 확인' : '저장 확인'}</Button>
       {uncertain ? <Button variant="outline" disabled={busy} onClick={() => void onRefresh()}><RefreshCw className="size-4" />결과 확인</Button> : <Button variant="outline" disabled={busy} onClick={() => void onCancel()}><X className="size-4" />취소</Button>}
     </div> : <Button variant="ghost" onClick={onDismiss}><X className="size-4" />닫기</Button>}
     <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{action.preview.title}</AlertDialogTitle><AlertDialogDescription>확인한 대상{action.preview.affected_items.length ? `과 포함된 물품 ${action.preview.affected_items.length}종` : ''}의 기록을 삭제합니다. 이 작업은 되돌릴 수 없습니다.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>취소</AlertDialogCancel><Button variant="destructive" disabled={busy} onClick={async () => { await onConfirm(); setDeleteOpen(false) }}>{busy && <Loader2 className="size-4 animate-spin" />}삭제 확정</Button></AlertDialogFooter></AlertDialogContent></AlertDialog>

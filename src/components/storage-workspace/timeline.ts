@@ -1,10 +1,14 @@
 import type { StorageAction, WorkspaceItem } from '@/lib/storage/types'
+import type { StorageMapView } from '@/lib/storage/map-types'
+import type { StorageMapProposal } from '@/lib/storage/map-proposal-types'
 
 export type ChatEntry =
   | { id: string; kind: 'message'; role: 'user' | 'assistant'; content: string }
   | { id: string; kind: 'results'; items: WorkspaceItem[]; title?: string; containerId?: string }
   | { id: string; kind: 'action'; actionId: string }
   | { id: string; kind: 'photos' }
+  | { id: string; kind: 'map'; view: StorageMapView }
+  | { id: string; kind: 'map_proposal'; proposal: StorageMapProposal }
 
 export type ConversationState = {
   entries: ChatEntry[]

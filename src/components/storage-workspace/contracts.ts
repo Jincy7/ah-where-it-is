@@ -1,5 +1,7 @@
 import type { ItemDraft } from '@/lib/ai/schema'
 import type { StorageAction, WorkspaceItem } from '@/lib/storage/types'
+import type { StorageMapDraft, StorageMapView } from '@/lib/storage/map-types'
+import type { MapRelation, StorageMapProposal } from '@/lib/storage/map-proposal-types'
 
 export type PhotoConversationDraft = {
   photo_id: string
@@ -26,9 +28,14 @@ export interface AssistantPanelProps {
   searchScope: string | null
   registrationContainerId: string | null
   activeAction: StorageAction | null
+  activeActionLocked?: boolean
   photoDrafts: PhotoConversationDraft[]
   onPhotoDraft: (draft: PhotoDraftUpdate) => boolean
   onSearchResults: (items: WorkspaceItem[]) => void
+  onMapView: (view: StorageMapView) => void
+  mapProposalContext?: { draft: StorageMapDraft; previous_relations: MapRelation[] }
+  mapDraftGeneration: number
+  onMapProposal: (proposal: StorageMapProposal, generation: number) => boolean
   onAction: (action: StorageAction) => void
 }
 
@@ -42,7 +49,11 @@ export async function storageRequest<T>(url: string, init?: RequestInit): Promis
   const response = await fetch(url, { cache: 'no-store', ...init })
   const data = await response.json()
   if (!response.ok) {
-    throw new Error(data.error || '요청을 처리하지 못했습니다. 다시 시도해주세요')
+    throw new StorageRequestError(data.error || '요청을 처리하지 못했습니다. 다시 시도해주세요', response.status)
   }
   return data as T
+}
+
+export class StorageRequestError extends Error {
+  constructor(message: string, public readonly status: number) { super(message) }
 }

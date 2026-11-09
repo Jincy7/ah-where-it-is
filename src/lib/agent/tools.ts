@@ -9,16 +9,31 @@ import { analyzeImage } from '@/lib/ai/gemini';
 import { cancelChange, getActionStatus, getContainer, getLocation, listContainers, listLocations, prepareChange, searchItems } from '@/lib/storage/service';
 import { changeSchema } from '@/lib/storage/schema';
 import { VisionError } from '@/lib/ai/gemini';
-import type { AgentContext, ToolName } from './contracts';
+import { agentChangeTypes, mapToolArgumentsSchema, type AgentContext, type ToolName } from './contracts';
+import { getStorageMap, resolveStorageMap } from '@/lib/storage/map-service';
+import { createStorageMapView, type StorageMapTarget } from '@/lib/storage/map-types';
+import { proposeStorageMap } from '@/lib/storage/map-proposal-service';
+import { storageMapProposalIntentSchema } from '@/lib/storage/map-proposal-schema';
 import { matchStorageNames } from './container-lookup';
 
 const id = z.string().uuid();
+async function mapForLookup(target: StorageMapTarget) {
+  try {
+    const scene = await resolveStorageMap(target);
+    const mapView = createStorageMapView(scene, target);
+    return { mapView };
+  } catch {
+    // A failed map refresh must not erase a successful inventory lookup.
+    return { mapError: '보관 기록은 확인했지만 지도를 불러오지 못했습니다. 지도를 다시 열어 확인해주세요.' };
+  }
+}
+
 export async function executeStorageTool(name: ToolName, args: Record<string,unknown>, context:AgentContext) {
   switch(name) {
     case 'search_items': {
       const input=z.object({query:z.string().trim().min(1).max(100),container_id:id.nullable()}).strict().parse(args);
       const items=await searchItems(input.query,input.container_id ?? undefined);
-      if(items.length)return {items};
+      if(items.length)return {items,...await mapForLookup({kind:'item',id:items[0].id})};
       const [containers,locations]=await Promise.all([listContainers(),listLocations()]);
       const matches=matchStorageNames(input.query,containers);
       const locationMatches=matchStorageNames(input.query,locations);
@@ -32,13 +47,40 @@ export async function executeStorageTool(name: ToolName, args: Record<string,unk
     case 'list_locations':
       z.object({}).strict().parse(args);
       return {locations:await listLocations()};
-    case 'get_location':
-      return await getLocation(z.object({location_id:id}).strict().parse(args).location_id);
+    case 'get_location': {
+      const {location_id}=z.object({location_id:id}).strict().parse(args);
+      return {...await getLocation(location_id),...await mapForLookup({kind:'location',id:location_id})};
+    }
     case 'list_containers':
       z.object({}).strict().parse(args);
       return {containers:await listContainers()};
-    case 'get_container':
-      return await getContainer(z.object({container_id:id}).strict().parse(args).container_id);
+    case 'get_container': {
+      const {container_id}=z.object({container_id:id}).strict().parse(args);
+      return {...await getContainer(container_id),...await mapForLookup({kind:'container',id:container_id})};
+    }
+    case 'show_storage_map': {
+      const parsed=mapToolArgumentsSchema.safeParse(args);
+      if(!parsed.success)throw new VisionError('지도에서 찾을 대상을 확인해주세요',400);
+      const input=parsed.data;
+      const target=input.kind==='all'?undefined:input;
+      const scene=target?await resolveStorageMap(target):await getStorageMap();
+      return {mapView:createStorageMapView(scene,target)};
+    }
+    case 'propose_storage_map': {
+      if(context.activeActionLocked)throw new VisionError('저장 결과를 확인 중입니다. 같은 작업의 결과를 먼저 확인해주세요',409);
+      if(context.activeActionId){
+        const current=await getActionStatus(context.activeActionId);
+        if(current.revision!==context.activeActionRevision)throw new VisionError('변경안이 달라졌습니다. 최신 내용을 확인해주세요',409);
+        if(current.status==='prepared'&&current.type==='save_storage_map')throw new VisionError('지도 변경안이 준비되어 있습니다. 화면에서 확정하거나 취소한 뒤 새 배치를 제안해주세요',409);
+      }
+      const argsResult=z.object({request_json:z.string().max(16000)}).strict().safeParse(args);
+      if(!argsResult.success)throw new VisionError('지도 제안 요청을 확인해주세요',400);
+      let intent:unknown;
+      try{intent=JSON.parse(argsResult.data.request_json);}catch{throw new VisionError('지도 관계를 읽지 못했습니다',400);}
+      const parsed=storageMapProposalIntentSchema.safeParse(intent);
+      if(!parsed.success)throw new VisionError('장소와 공간 관계를 확인해주세요. 좌표 대신 장소 사이의 관계를 요청해주세요',400);
+      return {mapProposal:await proposeStorageMap({...parsed.data,...(context.mapProposal?{draft:context.mapProposal.draft,previous_relations:context.mapProposal.previous_relations}:{})})};
+    }
     case 'analyze_photo': {
       const input=z.object({media_id:id,provider:z.enum(['openai','gemini'])}).strict().parse(args);
       const jpeg=await readOwnedMedia(input.media_id);
@@ -57,6 +99,7 @@ export async function executeStorageTool(name: ToolName, args: Record<string,unk
     case 'get_action_status':
       return {action:await getActionStatus(z.object({action_id:id}).strict().parse(args).action_id)};
     case 'cancel_change': {
+      if(context.activeActionLocked)throw new VisionError('저장 결과를 확인 중입니다. 같은 작업의 결과를 먼저 확인해주세요',409);
       const input=z.object({action_id:id}).strict().parse(args);
       if(input.action_id!==context.activeActionId)throw new VisionError('현재 화면의 작업만 취소할 수 있습니다',409);
       const action=await getActionStatus(input.action_id);
@@ -64,7 +107,10 @@ export async function executeStorageTool(name: ToolName, args: Record<string,unk
       return {action:await cancelChange(action.action_id,action.revision)};
     }
     case 'prepare_change': {
-      const input=z.object({type:z.string(),payload_json:z.string().max(16000)}).strict().parse(args);
+      if(context.activeActionLocked)throw new VisionError('저장 결과를 확인 중입니다. 같은 작업의 결과를 먼저 확인해주세요',409);
+      const parsed=z.object({type:z.enum(agentChangeTypes),payload_json:z.string().max(16000)}).strict().safeParse(args);
+      if(!parsed.success)throw new VisionError('허용되지 않은 변경 요청입니다',400);
+      const input=parsed.data;
       let payload:unknown;
       try {payload=JSON.parse(input.payload_json);} catch {throw new VisionError('변경 내용을 읽지 못했습니다',400);}
       const change=changeSchema.parse({type:input.type,payload});
@@ -72,6 +118,7 @@ export async function executeStorageTool(name: ToolName, args: Record<string,unk
       if(context.activeActionId) {
         current=await getActionStatus(context.activeActionId);
         if(current.revision!==context.activeActionRevision)throw new VisionError('변경안이 달라졌습니다. 최신 내용을 확인해주세요',409);
+        if(current.status==='prepared'&&current.type==='save_storage_map')throw new VisionError('지도 변경안이 준비되어 있습니다. 화면에서 확정하거나 취소한 뒤 다른 변경을 요청해주세요',409);
       }
       if(change.type==='register_items'&&current?.status==='prepared'&&current.type==='register_items'&&current.payload.source_photo_id&&!change.payload.source_photo_id) {
         change.payload.source_photo_id=current.payload.source_photo_id;

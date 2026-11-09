@@ -7,6 +7,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Textarea } from '@/components/ui/textarea';
 import type { AssistantPanelProps, PhotoDraftUpdate } from '@/components/storage-workspace/contracts';
 import type { AgentReply, ToolEvent } from '@/lib/agent/contracts';
+import type { StorageMapProposal } from '@/lib/storage/map-proposal-types';
+import type { StorageMapView } from '@/lib/storage/map-types';
 import type { StorageAction, WorkspaceItem } from '@/lib/storage/types';
 import { conversationHistory } from './conversation';
 import { useVoice } from './use-voice';
@@ -51,17 +53,26 @@ export function AssistantPanel(props: AssistantPanelProps) {
     registrationContainerId: props.registrationContainerId,
     activeActionId: props.activeAction?.action_id ?? null,
     activeActionRevision: props.activeAction?.revision ?? null,
+    activeActionLocked: props.activeActionLocked ?? false,
+    mapProposal: props.mapProposalContext,
     photoDrafts: props.photoDrafts ?? [],
-  }), [props.selectedContainerId, props.searchScope, props.registrationContainerId, props.activeAction?.action_id, props.activeAction?.revision, props.photoDrafts]);
+  }), [props.selectedContainerId, props.searchScope, props.registrationContainerId, props.activeAction?.action_id, props.activeAction?.revision, props.activeActionLocked, props.mapProposalContext, props.photoDrafts]);
 
-  const onEvent = useCallback((event: ToolEvent) => {
-    const result = event.result as { items?: WorkspaceItem[]; action?: StorageAction; photoDraft?: PhotoDraftUpdate; container_matches?: unknown[]; location_matches?: unknown[] };
+  const onEvent = useCallback((event: ToolEvent, proposalGeneration?: number) => {
+    const result = event.result as { items?: WorkspaceItem[]; action?: StorageAction; photoDraft?: PhotoDraftUpdate; mapView?: StorageMapView; mapProposal?: StorageMapProposal; mapError?: string; container_matches?: unknown[]; location_matches?: unknown[] };
     if (result.photoDraft && !current.current.onPhotoDraft(result.photoDraft)) {
       setError('사진 후보가 바뀌어 정정을 적용하지 못했습니다. 현재 내용을 확인해주세요.');
     }
     const hierarchyResult = event.name === 'get_location' || event.name === 'get_container' || result.container_matches?.length || result.location_matches?.length;
     if (result.items && !(result.items.length === 0 && hierarchyResult)) current.current.onSearchResults(result.items);
     if (result.action) current.current.onAction(result.action);
+    if (result.mapView) current.current.onMapView(result.mapView);
+    if (result.mapError) setError(result.mapError);
+    if (result.mapProposal && !current.current.onMapProposal(result.mapProposal, proposalGeneration ?? current.current.mapDraftGeneration)) {
+      setError('지도 초안이 바뀌어 이전 제안을 적용하지 않았습니다. 현재 초안을 확인하고 다시 요청해주세요.');
+      return false;
+    }
+    return true;
   }, []);
   const onTranscript = useCallback((role: 'user' | 'assistant', content: string) => {
     if (content.trim()) current.current.onMessage({ id: crypto.randomUUID(), role, content });
@@ -93,7 +104,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
   }, [props.active]);
   const onDictation = useCallback((text: string) => { dictationDraft.current?.enqueue(text); }, []);
   const dictation = useDictation({ active: props.active ?? true, onTranscript: onDictation });
-  const voice = useVoice({ context, active: props.active ?? true, onEvent, onTranscript });
+  const voice = useVoice({ context, mapDraftGeneration: props.mapDraftGeneration, active: props.active ?? true, onEvent, onTranscript });
   const connected = !['idle', 'error'].includes(voice.state);
   const disabled = props.active === false || busy;
 
@@ -130,6 +141,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
     const message = inputValue.current.trim();
     dictationDraft.current?.clear();
     const history = conversationHistory(current.current.messages);
+    const proposalGeneration = current.current.mapDraftGeneration;
     const controller = new AbortController();
     request.current = controller;
     mode.current = 'text';
@@ -152,7 +164,9 @@ export function AssistantPanel(props: AssistantPanelProps) {
       const reply = body as AgentReply;
       // The parent appends the result cards immediately after this answer.
       current.current.onMessage({ id: crypto.randomUUID(), role: 'assistant', content: reply.message });
-      reply.events.forEach(onEvent);
+      let proposalsAccepted=true;
+      reply.events.forEach(event=>{if(!onEvent(event,proposalGeneration))proposalsAccepted=false;});
+      if(!proposalsAccepted)current.current.onMessage({id:crypto.randomUUID(),role:'assistant',content:'지도 초안이 바뀌어 위 제안을 적용하지 않았습니다. 현재 초안에서 다시 요청해주세요.'});
     } catch (reason) {
       if (!mounted.current) return;
       setError(controller.signal.aborted ? '응답 시간이 초과되었습니다. 다시 시도해주세요.' : reason instanceof Error ? reason.message : 'AI 도움에 실패했습니다. 다시 시도해주세요.');

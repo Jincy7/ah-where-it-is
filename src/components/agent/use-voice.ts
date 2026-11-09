@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { agentInstructions, type AgentContext, type ToolEvent } from '@/lib/agent/contracts';
+import { advanceAgentContext, modelToolResult, agentInstructions, type AgentContext, type ToolEvent } from '@/lib/agent/contracts';
 
 type VoiceState='idle'|'connecting'|'listening'|'working'|'speaking'|'error';
-type Options={context:AgentContext;active:boolean;onEvent:(event:ToolEvent)=>void;onTranscript:(role:'user'|'assistant',text:string)=>void};
+type Options={context:AgentContext;mapDraftGeneration?:number;active:boolean;onEvent:(event:ToolEvent,proposalGeneration?:number)=>boolean|void;onTranscript:(role:'user'|'assistant',text:string)=>void};
 
 export function useVoice(options:Options) {
   const [state,setState]=useState<VoiceState>('idle');
@@ -96,14 +96,18 @@ export function useVoice(options:Options) {
         if(++toolRounds>5){fail('한 번의 음성 요청에서 처리할 수 있는 작업 수를 넘었습니다. 결과를 확인하고 다시 요청해주세요.');return;}
         if(calls.length>4){fail('음성 요청이 너무 복잡합니다. 한 작업씩 요청해주세요.');return;}
         setState('working');
+        let toolContext = current.current.context;
+        const proposalGeneration=current.current.mapDraftGeneration;
         for(const call of calls){
           seen.add(call.call_id);
           try{
-            const result=await fetch('/api/agent/tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:call.name,arguments:JSON.parse(call.arguments),context:current.current.context}),signal:controller.signal});
+            const result=await fetch('/api/agent/tool',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:call.name,arguments:JSON.parse(call.arguments),context:toolContext}),signal:controller.signal});
             const body=await result.json();
             if(token!==generation.current)return;
             if(!result.ok){fail(body.error||'기록을 확인하지 못했습니다. 텍스트로 계속해주세요.');return;}
-            else {current.current.onEvent(body as ToolEvent);send({type:'conversation.item.create',item:{type:'function_call_output',call_id:call.call_id,output:JSON.stringify(body.result)}});}
+            else {
+              if(current.current.onEvent(body as ToolEvent,proposalGeneration)===false){fail('지도 초안이 바뀌어 이전 제안을 적용하지 않았습니다. 현재 초안에서 다시 요청해주세요.');return;}
+              toolContext=advanceAgentContext(toolContext,body.result);send({type:'conversation.item.create',item:{type:'function_call_output',call_id:call.call_id,output:JSON.stringify(modelToolResult(body.result))}});}
           }catch{
             if(token===generation.current)fail('도구 연결에 실패했습니다. 현재 변경안을 확인하고 텍스트로 계속해주세요.');
             return;

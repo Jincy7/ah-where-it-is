@@ -6,6 +6,7 @@ import { VisionError } from "@/lib/ai/gemini";
 import type { Json } from "@/types/supabase";
 import { actionPayloadSchemas, canonicalJson, changeSchema, confirmationSchema } from "./schema";
 import type { ChangeInput, StorageAction, StorageContainer, StorageItem, StorageLocation, StorageLocationSummary, WorkspaceData } from "./types";
+import { getStorageMap, prepareStorageMap } from "./map-service";
 import { LOCATION_ITEM_LIMIT, locationContents, summarizeLocations } from "./location-lookup";
 
 // PostgREST puts filters in the URL; 100 UUIDs stay below the gateway's 8 KiB limit.
@@ -145,14 +146,24 @@ export async function prepareChange(input: ChangeInput): Promise<StorageAction> 
   const parsed = changeSchema.safeParse(input);
   if (!parsed.success) throw new VisionError("변경 요청을 확인해주세요", 400);
   const payloadResult = actionPayloadSchemas[parsed.data.type].safeParse(parsed.data.payload);
-  if (!payloadResult.success) throw new VisionError("물품명, 수량과 변경 대상을 확인해주세요", 400);
+  if (!payloadResult.success) throw new VisionError(parsed.data.type === "save_storage_map" ? (payloadResult.error.issues[0]?.message ?? "지도 내용을 확인해주세요") : "물품명, 수량과 변경 대상을 확인해주세요", 400);
   const { supabase, user } = await storageContext();
   const { type } = parsed.data;
   const payload = payloadResult.data as Record<string, unknown>;
   const expected: Record<string, number> = {};
   let before: Record<string, unknown> | null = null;
-  const after: Record<string, unknown> | null = type.startsWith("delete_") ? null : { ...payload };
+  let after: Record<string, unknown> | null = type.startsWith("delete_") ? null : { ...payload };
   let affected: { id: string; name: string; quantity: number }[] = [];
+  if (parsed.data.action_id) {
+    const current = await getActionStatus(parsed.data.action_id);
+    if (current.type === "save_storage_map" || type === "save_storage_map") throw new VisionError("지도 변경안을 취소한 뒤 새 변경안을 만들어주세요", 409);
+  }
+  if (type === "save_storage_map") {
+    const mapPreview = await prepareStorageMap(payload);
+    Object.assign(expected, mapPreview.expected);
+    before = mapPreview.before;
+    after = mapPreview.after;
+  }
   async function container(id: string) {
     const { data, error } = await supabase.from("containers").select("*").eq("id", id).eq("user_id", user.id).maybeSingle();
     databaseError(error);
@@ -217,7 +228,10 @@ export async function prepareChange(input: ChangeInput): Promise<StorageAction> 
       const { data, error } = await supabase.from("containers").select("id,name,version").eq("location_id", target.id).eq("user_id", user.id).order("id");
       databaseError(error);
       for (const c of data ?? []) expected[`containers:${c.id}`] = c.version;
-      before = { ...before, containers: data ?? [], container_ids: (data ?? []).map((c) => c.id) };
+      const mapScene = await getStorageMap();
+      const mapRegions = mapScene.regions.filter(region => region.location_id === target.id);
+      if (mapScene.map) expected[`storage_maps:${mapScene.map.id}`] = mapScene.map.revision;
+      before = { ...before, containers: data ?? [], container_ids: (data ?? []).map((c) => c.id), map_region_ids: mapRegions.map(region => region.id).sort(), map_revision: mapScene.map?.revision ?? null, map_regions: mapRegions, map_anchors: mapScene.anchors.filter(anchor => mapRegions.some(region => region.id === anchor.region_id)) };
     }
   }
   const mediaIds = [...new Set([
@@ -233,7 +247,7 @@ export async function prepareChange(input: ChangeInput): Promise<StorageAction> 
   for (const [key, version] of Object.entries(parsed.data.expected_versions ?? {})) {
     if (expected[key] !== version) throw new VisionError("기록이 변경되었습니다. 최신 내용을 불러온 후 다시 수정해주세요", 409);
   }
-  const titles: Record<string, string> = { register_items: "물품 등록", update_item: "물품 수정", move_item: "물품 이동", move_items: "보관함 물품 모두 이동", delete_item: "물품 삭제", create_container: "보관함 만들기", update_container: "보관함 수정", delete_container: "보관함과 포함 물품 삭제", create_location: "장소 만들기", update_location: "장소 수정", delete_location: "장소 삭제 (보관함은 유지)" };
+  const titles: Record<string, string> = { save_storage_map: "집 지도 저장", register_items: "물품 등록", update_item: "물품 수정", move_item: "물품 이동", move_items: "보관함 물품 모두 이동", delete_item: "물품 삭제", create_container: "보관함 만들기", update_container: "보관함 수정", delete_container: "보관함과 포함 물품 삭제", create_location: "장소 만들기", update_location: "장소 수정", delete_location: "장소 삭제 (보관함은 유지)" };
   const preview = { title: titles[type], before, after, affected_items: affected };
   const revision = (parsed.data.revision ?? 0) + 1;
   const actionId = parsed.data.action_id ?? randomUUID();

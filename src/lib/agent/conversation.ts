@@ -1,6 +1,6 @@
 import { VisionError } from '@/lib/ai/gemini';
 import { openAIChatModel } from '@/lib/ai/models';
-import { agentInstructions, agentTools, toolCallSchema, type AgentReply, type ChatRequest, type ToolName } from './contracts';
+import { advanceAgentContext, modelToolResult, agentInstructions, agentTools, toolCallSchema, type AgentReply, type ChatRequest, type ToolName } from './contracts';
 import { displayToolEvents } from './container-lookup';
 
 type ModelResponse = {status?:string;output?:Array<Record<string,unknown>>};
@@ -38,7 +38,8 @@ export async function runConversation(input:ChatRequest, deps:Dependencies):Prom
         const parsed=toolCallSchema.parse({name:call.name,arguments:JSON.parse(call.arguments)});
         const result=await deps.execute(parsed.name,parsed.arguments);
         events.push({name:parsed.name,result});
-        history.push({type:'function_call_output',call_id:call.call_id,output:JSON.stringify(result)});
+        Object.assign(input.context, advanceAgentContext(input.context, result));
+        history.push({type:'function_call_output',call_id:call.call_id,output:JSON.stringify(modelToolResult(result))});
       } catch(error) {
         // Never let a model reinterpret a failed read as absence, or claim a failed write succeeded.
         return {message:error instanceof VisionError?error.message:'요청한 기록을 조회하거나 변경안을 준비하지 못했습니다. 현재 내용을 확인하고 다시 시도해주세요.',events:displayToolEvents(events)};
