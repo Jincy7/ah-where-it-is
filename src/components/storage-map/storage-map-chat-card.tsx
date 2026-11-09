@@ -23,11 +23,14 @@ export interface StorageMapChatCardProps {
   view: StorageMapView
   refreshKey?: number
   onEdit?: () => void
+  onPropose?: () => void
+  proposing?: boolean
+  proposalDisabled?: boolean
   onRegister?: (containerId: string) => void
   onSearch?: (containerId: string) => void
   onDiscuss?: (containerId: string) => void
 }
-export function StorageMapChatCard({ view, refreshKey = 0, onEdit, onRegister, onSearch, onDiscuss }: StorageMapChatCardProps) {
+export function StorageMapChatCard({ view, refreshKey = 0, onEdit, onPropose, proposing = false, proposalDisabled = false, onRegister, onSearch, onDiscuss }: StorageMapChatCardProps) {
   const [scene, setScene] = useState<StorageMapSceneData | null>(view.scene ?? null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -70,7 +73,7 @@ export function StorageMapChatCard({ view, refreshKey = 0, onEdit, onRegister, o
     {scene?.map ? <><button type="button" className="block w-full cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary" aria-label="보관 지도 크게 보기" onClick={openExpanded}><StorageMapScene columns={scene.map.columns} rows={scene.map.rows} regions={scene.regions} anchors={scene.anchors} containers={scene.containers} highlightRegionIds={regionIds} highlightContainerIds={containerIds} compact /></button><ul className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs" aria-label="지도 구획 범례">{legend}</ul></> : !loading && !error ? <div className="space-y-2 rounded-lg border border-dashed px-4 py-6 text-center"><MapPin className="mx-auto size-7 text-muted-foreground" /><p className="text-sm font-medium">아직 저장한 지도가 없습니다</p><p className="text-xs text-muted-foreground">장소와 보관함은 아래 목록으로 확인할 수 있습니다.</p>{onEdit && <Button variant="outline" className="min-h-11" onClick={onEdit}><Plus className="size-4" />지도 만들기</Button>}</div> : !scene && <p role="status" className="text-sm text-muted-foreground">{loading ? '지도 불러오는 중…' : '지도를 불러오지 못했습니다.'}</p>}
     {path && <div className="space-y-1"><p className="text-xs text-muted-foreground">{error ? '이전 조회 위치' : changed ? '현재 마지막 기록 위치' : '마지막 기록 위치'}</p><p className="break-words text-sm font-medium">{path}</p>{resolution?.item && <p className="text-sm">{resolution.item.name} · {resolution.item.quantity}개</p>}{resolution && <Badge variant="outline">{placementLabels[resolution.placement]}</Badge>}</div>}
     {scene?.truncated && <p className="text-xs text-muted-foreground">일부 목록만 표시하고 있습니다. 표시된 수는 서버 집계입니다.</p>}
-    <div className="flex flex-wrap gap-2"><Button variant="outline" className="min-h-11" disabled={!scene} onClick={openExpanded}><Expand className="size-4" />크게 보기·목록</Button>{onEdit && scene?.map && <Button variant="ghost" className="min-h-11" onClick={onEdit}><Pencil className="size-4" />지도 편집</Button>}</div>
+    <div className="flex flex-wrap gap-2">{onPropose && <Button variant="outline" className="min-h-11" disabled={proposing || proposalDisabled || !scene} onClick={onPropose}>{proposing ? <Loader2 className="size-4 animate-spin" /> : <Map className="size-4" />}기본 배치 제안</Button>}<Button variant="outline" className="min-h-11" disabled={!scene} onClick={openExpanded}><Expand className="size-4" />크게 보기·목록</Button>{onEdit && scene?.map && <Button variant="ghost" className="min-h-11" onClick={onEdit}><Pencil className="size-4" />지도 편집</Button>}</div>
     {scene && <p className="text-xs text-muted-foreground">조회 {new Date(scene.evidence_at).toLocaleTimeString('ko-KR')} · 표식은 사용자가 배치한 기록입니다.</p>}
     <Dialog open={expanded} onOpenChange={setExpanded}><DialogContent className="max-h-[92dvh] overflow-y-auto p-4 sm:max-w-4xl sm:p-6"><DialogHeader><DialogTitle>{scene?.map?.name ?? '장소와 보관함'}</DialogTitle><DialogDescription>지도 선택은 등록 대상과 검색 범위를 바꾸지 않습니다. 아래 동작으로 각각 지정하세요.</DialogDescription></DialogHeader>
       {error && <p role="alert" className="text-sm text-destructive">갱신 실패 · {scene ? `${new Date(scene.evidence_at).toLocaleString('ko-KR')} 조회 장면` : error}</p>}

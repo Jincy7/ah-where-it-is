@@ -12,6 +12,8 @@ import { VisionError } from '@/lib/ai/gemini';
 import { agentChangeTypes, mapToolArgumentsSchema, type AgentContext, type ToolName } from './contracts';
 import { getStorageMap, resolveStorageMap } from '@/lib/storage/map-service';
 import { createStorageMapView, type StorageMapTarget } from '@/lib/storage/map-types';
+import { proposeStorageMap } from '@/lib/storage/map-proposal-service';
+import { storageMapProposalIntentSchema } from '@/lib/storage/map-proposal-schema';
 import { matchStorageNames } from './container-lookup';
 
 const id = z.string().uuid();
@@ -63,6 +65,21 @@ export async function executeStorageTool(name: ToolName, args: Record<string,unk
       const target=input.kind==='all'?undefined:input;
       const scene=target?await resolveStorageMap(target):await getStorageMap();
       return {mapView:createStorageMapView(scene,target)};
+    }
+    case 'propose_storage_map': {
+      if(context.activeActionLocked)throw new VisionError('저장 결과를 확인 중입니다. 같은 작업의 결과를 먼저 확인해주세요',409);
+      if(context.activeActionId){
+        const current=await getActionStatus(context.activeActionId);
+        if(current.revision!==context.activeActionRevision)throw new VisionError('변경안이 달라졌습니다. 최신 내용을 확인해주세요',409);
+        if(current.status==='prepared'&&current.type==='save_storage_map')throw new VisionError('지도 변경안이 준비되어 있습니다. 화면에서 확정하거나 취소한 뒤 새 배치를 제안해주세요',409);
+      }
+      const argsResult=z.object({request_json:z.string().max(16000)}).strict().safeParse(args);
+      if(!argsResult.success)throw new VisionError('지도 제안 요청을 확인해주세요',400);
+      let intent:unknown;
+      try{intent=JSON.parse(argsResult.data.request_json);}catch{throw new VisionError('지도 관계를 읽지 못했습니다',400);}
+      const parsed=storageMapProposalIntentSchema.safeParse(intent);
+      if(!parsed.success)throw new VisionError('장소와 공간 관계를 확인해주세요. 좌표 대신 장소 사이의 관계를 요청해주세요',400);
+      return {mapProposal:await proposeStorageMap({...parsed.data,...(context.mapProposal?{draft:context.mapProposal.draft,previous_relations:context.mapProposal.previous_relations}:{})})};
     }
     case 'analyze_photo': {
       const input=z.object({media_id:id,provider:z.enum(['openai','gemini'])}).strict().parse(args);

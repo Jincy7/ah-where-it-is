@@ -14,6 +14,9 @@ import type { StorageMapDraft, StorageMapSceneData, StorageMapTarget, StorageMap
 import { createStorageMapView } from '@/lib/storage/map-types'
 import { StorageMapEditor, createMapDraft } from '@/components/storage-map/storage-map-editor'
 import { StorageMapChatCard } from '@/components/storage-map/storage-map-chat-card'
+import { StorageMapProposalCard } from '@/components/storage-map/storage-map-proposal-card'
+import type { StorageMapProposal } from '@/lib/storage/map-proposal-types'
+import { mapProposalProblem, sameMapDraft } from './map-proposal-state'
 import { mapActionConflict, mapDraftAcceptsAction } from './map-workflow'
 import { ActionCard } from './action-card'
 import { ChatMessage } from './chat-message'
@@ -58,9 +61,17 @@ export function StorageWorkspace() {
   const [mapOpen, setMapOpen] = useState(false)
   const [savedMap, setSavedMap] = useState<StorageMapSceneData | null>(null)
   const [mapDraft, setMapDraft] = useState<StorageMapDraft | null>(null)
+  const [mapProposal, setMapProposal] = useState<StorageMapProposal | null>(null)
+  const [proposingMap, setProposingMap] = useState(false)
+  const [discardedProposals, setDiscardedProposals] = useState<string[]>([])
   const [mapLoading, setMapLoading] = useState(false)
   const [mapRefreshKey, setMapRefreshKey] = useState(0)
   const mapDraftRef = useRef<StorageMapDraft | null>(null)
+  const mapProposalRef = useRef<StorageMapProposal | null>(null)
+  const seenProposals = useRef(new Set<string>())
+  const proposeLock = useRef(false)
+  const mapDraftEpoch = useRef(0)
+  const [mapDraftGeneration, setMapDraftGeneration] = useState(0)
   const completedMapActions = useRef(new Set<string>())
   const reconciledReceipts = useRef(new Set<string>())
   const reconcileAction = useRef<(next: StorageAction) => Promise<void>>(async () => {})
@@ -83,12 +94,59 @@ export function StorageWorkspace() {
   const containers = data?.containers ?? []
   const locations = data?.locations ?? []
   const actionRef = useRef(action)
-  useLayoutEffect(() => { actionRef.current = action; conversationRef.current = conversation })
+  const storageLockedRef = useRef(storageLocked)
+  useLayoutEffect(() => { actionRef.current = action; conversationRef.current = conversation; storageLockedRef.current = storageLocked })
 
   const updateMapDraft = useCallback((draft: StorageMapDraft | null) => {
+    mapDraftEpoch.current += 1
+    setMapDraftGeneration(mapDraftEpoch.current)
     mapDraftRef.current = draft
     setMapDraft(draft)
+    if (!draft || (mapProposalRef.current && !sameMapDraft(draft, mapProposalRef.current.draft))) {
+      mapProposalRef.current = null
+      setMapProposal(null)
+    }
   }, [])
+  const receiveMapProposal = useCallback((proposal: StorageMapProposal, generation = mapDraftEpoch.current) => {
+    if (generation !== mapDraftEpoch.current) { toast.error('지도 초안이 바뀌어 이전 제안을 적용하지 않았습니다. 현재 내용으로 다시 요청해주세요'); return false }
+    if (seenProposals.current.has(proposal.proposal_id)) return mapProposalRef.current?.proposal_id === proposal.proposal_id
+    const problem = mapProposalProblem(mapDraftRef.current, proposal, actionRef.current, storageLockedRef.current || confirmLock.current || prepareLock.current)
+    if (problem) { toast.error(problem); return false }
+    seenProposals.current.add(proposal.proposal_id)
+    // Update synchronously so multiple tool events in one reply form a revision chain.
+    mapDraftRef.current = proposal.draft
+    mapProposalRef.current = proposal
+    setMapDraft(proposal.draft)
+    setMapProposal(proposal)
+    setConversation(previous => ({ ...previous, entries: [...previous.entries, { id: `map-proposal:${proposal.proposal_id}`, kind: 'map_proposal', proposal }] }))
+    setMapOpen(false)
+    return true
+  }, [])
+  async function proposeBasicMap() {
+    if (proposeLock.current || storageLockedRef.current || assistantBusy || confirmLock.current || actionRef.current?.status === 'prepared' && actionRef.current.type === 'save_storage_map') {
+      toast.error('진행 중인 지도 변경안이나 작업 결과를 먼저 확인해주세요')
+      return
+    }
+    proposeLock.current = true
+    setProposingMap(true)
+    const epoch = mapDraftEpoch.current
+    const current = mapDraftRef.current
+    const previous = mapProposalRef.current
+    try {
+      const result = await storageRequest<{ proposal: StorageMapProposal }>('/api/storage/map/propose', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...(current ? { draft: current } : {}), previous_relations: current && previous && sameMapDraft(current, previous.draft) ? previous.relations : [] }),
+      })
+      if (epoch !== mapDraftEpoch.current) { toast.error('지도 초안이 바뀌어 이전 제안을 적용하지 않았습니다. 현재 내용으로 다시 요청해주세요'); return }
+      receiveMapProposal(result.proposal, epoch)
+    } catch (error) { toast.error(error instanceof Error ? error.message : '배치를 제안하지 못했습니다') }
+    finally { proposeLock.current = false; setProposingMap(false) }
+  }
+  function discardMapProposal(proposal: StorageMapProposal) {
+    if (storageLockedRef.current || assistantBusy || actionRef.current?.type === 'save_storage_map' && actionRef.current.status === 'prepared' || !sameMapDraft(mapDraftRef.current, proposal.draft)) return
+    setDiscardedProposals(previous => [...previous, proposal.proposal_id])
+    updateMapDraft(null)
+  }
   const appendMap = useCallback((view: StorageMapView, id = crypto.randomUUID()) => {
     setConversation(previous => previous.entries.some(entry => entry.id === id) ? previous : {
       ...previous, entries: [...previous.entries, { id, kind: 'map', view }],
@@ -355,7 +413,7 @@ export function StorageWorkspace() {
     await openMapEditor()
   }
   async function prepareMap(draft: StorageMapDraft) {
-    updateMapDraft(draft)
+    if (!sameMapDraft(mapDraftRef.current, draft)) throw new Error('지도 초안이 바뀌었습니다. 현재 초안의 변경 내용을 확인해주세요')
     try {
       await prepare('save_storage_map', { ...draft })
       setMapOpen(false)
@@ -451,7 +509,13 @@ export function StorageWorkspace() {
         if (entry.kind === 'photos') return <div key={entry.id} hidden={!photosActive}><PhotoRegistration ref={photoRef} containers={containers} containerId={registrationContainerId} onContainerChange={setRegistrationContainerId} existingNames={(data?.items ?? []).filter(item => item.container_id === registrationContainerId).map(item => item.name)} prepare={prepare} action={action} locked={storageLocked} interactionLocked={assistantBusy} onDraftsChange={receivePhotoDrafts} draftUpdate={photoDraftUpdate} onPhotosAdded={activatePhotos} /></div>
         if (entry.kind === 'message') return <ChatMessage key={entry.id} role={entry.role} content={entry.content} />
         if (entry.kind === 'results') return <ResultsCard key={entry.id} items={entry.items} title={entry.title} emptyMessage={entry.containerId ? '이 보관함에 등록된 물품이 없어요.' : undefined} onShowMap={item => void showItemMap(item)} locked={locked} onEdit={item => openEditor({ kind: 'item', item })} onMove={item => openEditor({ kind: 'move', item })} onDelete={item => void requestDelete('delete_item', item)} />
-        if (entry.kind === 'map') return <StorageMapChatCard key={entry.id} view={entry.view} refreshKey={mapRefreshKey} onEdit={() => void openMapEditor()} onRegister={registerFromMap} onSearch={searchFromMap} onDiscuss={discussFromMap} />
+        if (entry.kind === 'map') return <StorageMapChatCard key={entry.id} view={entry.view} refreshKey={mapRefreshKey} onPropose={() => void proposeBasicMap()} proposing={proposingMap} proposalDisabled={locked || action?.status === 'prepared' && action.type === 'save_storage_map'} onEdit={() => void openMapEditor()} onRegister={registerFromMap} onSearch={searchFromMap} onDiscuss={discussFromMap} />
+        if (entry.kind === 'map_proposal') {
+          const matchingAction = Object.values(conversation.actions).find(value => value.type === 'save_storage_map' && value.payload.map_draft_id === entry.proposal.draft.map_draft_id && value.payload.draft_revision === entry.proposal.draft.draft_revision && value.status !== 'cancelled')
+          const current = mapProposal?.proposal_id === entry.proposal.proposal_id && sameMapDraft(mapDraft, entry.proposal.draft)
+          const status = matchingAction?.status === 'completed' ? 'completed' : matchingAction?.status === 'prepared' ? 'prepared' : current ? 'active' : discardedProposals.includes(entry.proposal.proposal_id) ? 'cancelled' : 'superseded'
+          return <StorageMapProposalCard key={entry.id} proposal={entry.proposal} status={status} busy={storageLocked || assistantBusy || proposingMap} locked={storageLocked} blockedReason={current && action?.status === 'prepared' && action.type !== 'save_storage_map' ? '진행 중인 변경안을 확정하거나 취소한 뒤 지도 저장을 확인해주세요. 배치 제안은 유지됩니다.' : undefined} onPrepare={prepareMap} onEdit={async draft => { if (!sameMapDraft(mapDraftRef.current, draft)) return; await openMapEditor() }} onCancel={() => discardMapProposal(entry.proposal)} onEditPrepared={matchingAction?.action_id === action?.action_id && !uncertain ? editPreparedMap : undefined} />
+        }
         const entryAction = conversation.actions[entry.actionId]
         if (!entryAction) return null
         const active = entry.actionId === conversation.activeActionId
@@ -462,10 +526,10 @@ export function StorageWorkspace() {
     </div>
     <div className="relative shrink-0 bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:px-6">
       {!nearBottom && <Button variant="outline" size="sm" className="absolute -top-11 left-1/2 -translate-x-1/2 rounded-full bg-background shadow-sm" onClick={scrollToBottom}><ArrowDown className="size-4" />최근 대화</Button>}
-      <AssistantPanel messages={messages} onMessage={appendMessage} onBusyChange={setAssistantBusy} onAttachPhoto={() => attachPhoto()} onTakePhoto={() => attachPhoto(true)} onManage={() => { if (!locked) setManagementOpen(true) }} onDirectRegister={() => openEditor({ kind: 'item' })} onSearch={openSearch} prompt={prompt} contextLabel={contextLabel} active={Boolean(data) && !storageLocked && !managementOpen && !locationsOpen && !searchOpen && !mapOpen && !editor} selectedContainerId={selected?.id ?? null} searchScope={searchScope} registrationContainerId={registrationContainerId} activeAction={action} activeActionLocked={storageLocked} onMapView={appendMap} photoDrafts={photoDrafts} onPhotoDraft={updatePhotoDraft} onAction={receiveAction} onSearchResults={items => appendResults(items)} />
+      <AssistantPanel messages={messages} onMessage={appendMessage} onBusyChange={setAssistantBusy} onAttachPhoto={() => attachPhoto()} onTakePhoto={() => attachPhoto(true)} onManage={() => { if (!locked) setManagementOpen(true) }} onDirectRegister={() => openEditor({ kind: 'item' })} onSearch={openSearch} prompt={prompt} contextLabel={contextLabel} active={Boolean(data) && !storageLocked && !proposingMap && !managementOpen && !locationsOpen && !searchOpen && !mapOpen && !editor} selectedContainerId={selected?.id ?? null} searchScope={searchScope} registrationContainerId={registrationContainerId} activeAction={action} activeActionLocked={storageLocked} onMapView={appendMap} mapProposalContext={mapDraft ? { draft: mapDraft, previous_relations: mapProposal && sameMapDraft(mapDraft, mapProposal.draft) ? mapProposal.relations : [] } : undefined} mapDraftGeneration={mapDraftGeneration} onMapProposal={receiveMapProposal} photoDrafts={photoDrafts} onPhotoDraft={updatePhotoDraft} onAction={receiveAction} onSearchResults={items => appendResults(items)} />
     </div>
     {data && <ManagementDialog open={managementOpen} onOpenChange={setManagementOpen} data={data} selectedId={selectedId} locked={locked} refreshing={refreshing} onSelect={selectContainer} onNewContainer={() => openEditor({ kind: 'container' })} onEditContainer={container => openEditor({ kind: 'container', container })} onDeleteContainer={container => void requestDelete('delete_container', container)} onMap={() => void openMapEditor()} onLocations={() => { setManagementOpen(false); setLocationsOpen(true) }} onDirectRegister={() => openEditor({ kind: 'item' })} onSearch={openSearch} onRefresh={() => void refresh().then(fresh => { if (fresh) setConversation(previous => ({ ...previous, entries: refreshConversationResults(previous.entries, fresh.items) })) })} onEditItem={item => openEditor({ kind: 'item', item })} onMoveItem={item => openEditor({ kind: 'move', item })} onDeleteItem={item => void requestDelete('delete_item', item)} />}
-    <StorageMapEditor open={mapOpen} onOpenChange={setMapOpen} scene={savedMap} draft={mapDraft} onDraftChange={updateMapDraft} locations={savedMap?.locations ?? locations} containers={savedMap?.containers ?? containers} locked={storageLocked || action?.status === 'prepared' && action.type === 'save_storage_map'} blockedReason={action?.status === 'prepared' && action.type !== 'save_storage_map' ? '진행 중인 변경안을 확정하거나 취소한 뒤 저장해주세요. 지도 초안은 유지됩니다.' : undefined} busy={preparing || actionBusy} onPrepare={prepareMap} onChangeContainer={id => { const container = containers.find(value => value.id === id); if (!container || locked || action?.status === 'prepared') { toast.error('진행 중인 변경안을 먼저 확인해주세요'); return } setMapOpen(false); openEditor({ kind: 'container', container }) }} onEditPrepared={action?.status === 'prepared' && action.type === 'save_storage_map' && !uncertain ? editPreparedMap : undefined} />
+    <StorageMapEditor open={mapOpen} onOpenChange={setMapOpen} scene={savedMap} draft={mapDraft} onPropose={() => void proposeBasicMap()} proposing={proposingMap} proposalDisabled={assistantBusy} onDraftChange={updateMapDraft} locations={savedMap?.locations ?? locations} containers={savedMap?.containers ?? containers} locked={storageLocked || action?.status === 'prepared' && action.type === 'save_storage_map'} blockedReason={action?.status === 'prepared' && action.type !== 'save_storage_map' ? '진행 중인 변경안을 확정하거나 취소한 뒤 저장해주세요. 지도 초안은 유지됩니다.' : undefined} busy={preparing || actionBusy} onPrepare={prepareMap} onChangeContainer={id => { const container = containers.find(value => value.id === id); if (!container || locked || action?.status === 'prepared') { toast.error('진행 중인 변경안을 먼저 확인해주세요'); return } setMapOpen(false); openEditor({ kind: 'container', container }) }} onEditPrepared={action?.status === 'prepared' && action.type === 'save_storage_map' && !uncertain ? editPreparedMap : undefined} />
     <Dialog open={editor !== null} onOpenChange={open => { if (!open && !preparing) setEditor(null) }}><DialogContent className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{editorTitle}</DialogTitle><DialogDescription>입력한 내용을 대화에서 확인한 뒤 저장합니다.</DialogDescription></DialogHeader>{editor?.kind === 'item' && <>{!editor.item && <div className="space-y-1"><Label htmlFor="manual-registration-target">등록할 보관함</Label><select id="manual-registration-target" className="h-11 w-full rounded-md border bg-background px-3 text-sm" value={registrationContainerId ?? ''} onChange={event => setRegistrationContainerId(event.target.value || null)} disabled={locked}><option value="">보관함 선택</option>{containers.map(container => <option key={container.id} value={container.id}>{container.location_name || '장소 미지정'} → {container.name}</option>)}</select>{!containers.length && <Button variant="outline" onClick={() => setEditor({ kind: 'container' })}><Plus className="size-4" />먼저 보관함 만들기</Button>}</div>}{(editor.item || registrationContainerId) && <ItemEditor key={editor.item?.id ?? 'new-item'} item={editor.item} containerId={editor.item?.container_id ?? registrationContainerId!} prepare={prepare} onPrepared={() => setEditor(null)} />}</>}{editor?.kind === 'move' && <MoveEditor item={editor.item} containers={containers} prepare={prepare} onPrepared={() => setEditor(null)} />}{editor?.kind === 'container' && <ContainerEditor key={editor.container?.id ?? 'new'} container={editor.container} locations={locations} prepare={prepare} onPrepared={() => setEditor(null)} />}{editor?.kind === 'location' && <LocationEditor key={editor.location?.id ?? 'new'} location={editor.location} prepare={prepare} onPrepared={() => setEditor(null)} />}</DialogContent></Dialog>
     <Dialog open={locationsOpen} onOpenChange={setLocationsOpen}><DialogContent className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>장소 관리</DialogTitle><DialogDescription>장소별로 보관함을 묶어 관리하세요.</DialogDescription></DialogHeader><Button disabled={locked} onClick={() => openEditor({ kind: 'location' })}><Plus className="size-4" />새 장소</Button><div className="divide-y">{locations.map(location => <div key={location.id} className="flex items-center gap-3 py-3"><MapPin className="size-4 text-muted-foreground" /><div className="min-w-0 flex-1"><p className="break-words font-medium">{location.name}</p><p className="text-sm text-muted-foreground">{location.description || `${containers.filter(c => c.location_id === location.id).length}개 보관함`}</p></div><Button variant="ghost" size="icon" aria-label={`${location.name} 수정`} disabled={locked} onClick={() => openEditor({ kind: 'location', location })}><Pencil className="size-4" /></Button><Button variant="ghost" size="icon" aria-label={`${location.name} 삭제`} disabled={locked} onClick={() => void requestDelete('delete_location', location)}><Trash2 className="size-4" /></Button></div>)}{!locations.length && <p className="py-6 text-center text-sm text-muted-foreground">등록된 장소가 없습니다.</p>}</div></DialogContent></Dialog>
     <Dialog open={searchOpen} onOpenChange={setSearchOpen}><DialogContent><DialogHeader><DialogTitle>물품 검색</DialogTitle><DialogDescription>이름과 설명으로 저장한 기록을 찾아요.</DialogDescription></DialogHeader><form onSubmit={search} className="space-y-4"><div className="space-y-1"><Label htmlFor="manual-search">검색어</Label><Input id="manual-search" autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="예: 검은색 충전기" maxLength={200} /></div><div className="space-y-1"><Label htmlFor="search-scope">찾기 범위</Label><select id="search-scope" className="h-11 w-full rounded-md border bg-background px-3 text-sm" value={scopeInput} onChange={event => setScopeInput(event.target.value)}><option value="">전체 보관함</option>{containers.map(container => <option key={container.id} value={container.id}>{container.location_name || '장소 미지정'} → {container.name}</option>)}</select><p className="text-xs text-muted-foreground">등록 대상과 별개로 선택합니다.</p></div><Button type="submit" className="w-full" disabled={!query.trim()}><Search className="size-4" />찾기</Button></form></DialogContent></Dialog>

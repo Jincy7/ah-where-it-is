@@ -7,6 +7,7 @@ import * as zod from 'zod';
 import * as contracts from '../src/lib/agent/contracts';
 import { runConversation } from '../src/lib/agent/conversation';
 import * as storageSchema from '../src/lib/storage/schema';
+import * as proposalSchema from '../src/lib/storage/map-proposal-schema';
 import * as mapTypes from '../src/lib/storage/map-types';
 import { VisionError } from '../src/lib/ai/gemini';
 import { matchStorageNames } from '../src/lib/agent/container-lookup';
@@ -37,6 +38,8 @@ function fixture(service: Service = {}, maps: Service = {}) {
       if (name === './container-lookup') return {matchStorageNames};
       if (name === '@/lib/storage/service') return {...defaults,...service};
       if (name === '@/lib/storage/map-service') return {getStorageMap:async()=>emptyScene,resolveStorageMap:async()=>emptyScene,...maps};
+      if (name === '@/lib/storage/map-proposal-schema') return proposalSchema;
+      if (name === '@/lib/storage/map-proposal-service') return {proposeStorageMap:async()=>assert.fail('Unexpected proposal')};
       if (name === '@/lib/storage/map-types') return mapTypes;
       if (name === '@/lib/storage/schema') return storageSchema;
       if (name === '@/lib/ai/gemini') return {VisionError};

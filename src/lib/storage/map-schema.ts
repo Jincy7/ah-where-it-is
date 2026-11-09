@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { regionBounds } from './map-geometry';
+/** Keep proposal duplicate checks and save preparation aligned. Display names and exact ID/name resolution stay unchanged. */
+export function normalizeMapLocationName(name: string): string { return name.trim().toLocaleLowerCase(); }
 const id = z.string().uuid();
 const cell = z.object({ col: z.number().int().min(0).max(63), row: z.number().int().min(0).max(63) }).strict();
 export const storageMapTargetSchema = z.object({ kind: z.enum(['item', 'container', 'location']), id }).strict();

@@ -1,6 +1,7 @@
 import type { ItemDraft } from '@/lib/ai/schema'
 import type { StorageAction, WorkspaceItem } from '@/lib/storage/types'
-import type { StorageMapView } from '@/lib/storage/map-types'
+import type { StorageMapDraft, StorageMapView } from '@/lib/storage/map-types'
+import type { MapRelation, StorageMapProposal } from '@/lib/storage/map-proposal-types'
 
 export type PhotoConversationDraft = {
   photo_id: string
@@ -32,6 +33,9 @@ export interface AssistantPanelProps {
   onPhotoDraft: (draft: PhotoDraftUpdate) => boolean
   onSearchResults: (items: WorkspaceItem[]) => void
   onMapView: (view: StorageMapView) => void
+  mapProposalContext?: { draft: StorageMapDraft; previous_relations: MapRelation[] }
+  mapDraftGeneration: number
+  onMapProposal: (proposal: StorageMapProposal, generation: number) => boolean
   onAction: (action: StorageAction) => void
 }
 

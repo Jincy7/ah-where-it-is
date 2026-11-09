@@ -1,7 +1,7 @@
 import 'server-only';
 import { VisionError } from '@/lib/ai/gemini';
 import { storageContext } from './service';
-import { storageMapDraftSchema, storageMapTargetSchema } from './map-schema';
+import { normalizeMapLocationName, storageMapDraftSchema, storageMapTargetSchema } from './map-schema';
 import type { StorageMapDraft, StorageMapSceneData, StorageMapTarget } from './map-types';
 
 export async function getStorageMap(): Promise<StorageMapSceneData> {
@@ -40,8 +40,8 @@ export async function prepareStorageMap(payload: unknown) {
   const pending = new Map(draft.new_locations.map(location => [location.client_location_key, location]));
   const names = new Set<string>();
   for (const location of draft.new_locations) {
-    const normalized = location.name.trim().toLocaleLowerCase();
-    if (scene.locations.some(existing => existing.name.trim().toLocaleLowerCase() === normalized)) throw new VisionError(`‘${location.name}’ 장소가 이미 있습니다. 기존 장소를 직접 선택해주세요`, 409);
+    const normalized = normalizeMapLocationName(location.name);
+    if (scene.locations.some(existing => normalizeMapLocationName(existing.name) === normalized)) throw new VisionError(`‘${location.name}’ 장소가 이미 있습니다. 기존 장소를 직접 선택해주세요`, 409);
     if (names.has(normalized)) throw new VisionError('새 장소 이름이 중복되었습니다. 서로 다른 이름을 입력해주세요', 400);
     names.add(normalized);
   }

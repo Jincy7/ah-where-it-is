@@ -7,7 +7,9 @@ import { randomUUID } from 'node:crypto';
 import ts from 'typescript';
 import * as timeline from '../src/components/storage-workspace/timeline';
 import * as workflow from '../src/components/storage-workspace/map-workflow';
+import * as proposalState from '../src/components/storage-workspace/map-proposal-state';
 import * as mapTypes from '../src/lib/storage/map-types';
+import type { StorageMapProposal } from '../src/lib/storage/map-proposal-types';
 import type { StorageAction, WorkspaceData } from '../src/lib/storage/types';
 import type { StorageWorkspace } from '../src/components/storage-workspace/storage-workspace';
 import type { ActionCard } from '../src/components/storage-workspace/action-card';
@@ -29,7 +31,7 @@ function childrenText(value:unknown):string {
 const draft:mapTypes.StorageMapDraft={base_map_revision:null,map_draft_id:randomUUID(),draft_revision:2,name:'우리 집',columns:12,rows:8,regions:[],anchors:[],new_locations:[]};
 const prepared:StorageAction={action_id:randomUUID(),revision:1,type:'save_storage_map',status:'prepared',payload:{...draft},payload_hash:'a'.repeat(64),idempotency_key:randomUUID(),expected_versions:{},preview:{title:'집 지도 저장',before:null,after:null,affected_items:[]},receipt:null};
 
-function workspaceFixture(options: { initialDraft?: mapTypes.StorageMapDraft; initialAction?: StorageAction; request?: (url: string) => Promise<unknown> } = {}) {
+function workspaceFixture(options: { initialDraft?: mapTypes.StorageMapDraft | null; initialAction?: StorageAction | null; request?: (url: string) => Promise<unknown> } = {}) {
   const slots:unknown[]=[];
   const layoutEffects:Array<()=>void>=[];
   let cursor=0;
@@ -68,6 +70,7 @@ function workspaceFixture(options: { initialDraft?: mapTypes.StorageMapDraft; in
       }};
       if(name==='./timeline')return timeline;
       if(name==='./map-workflow')return workflow;
+      if(name==='./map-proposal-state')return proposalState;
       if(name==='./photo-state')return {photoDraftAcceptsAction:()=>true};
       if(name==='@/lib/storage/map-types')return mapTypes;
       if(name.startsWith('@/components/')||name.startsWith('./'))return new Proxy({},{get:(_,key)=>key});
@@ -82,9 +85,9 @@ function workspaceFixture(options: { initialDraft?: mapTypes.StorageMapDraft; in
   };
   const component=(name:string)=>find(render(),node=>node.type===name)!;
   const mapEditor=component('StorageMapEditor');
-  (mapEditor.props.onDraftChange as (value:mapTypes.StorageMapDraft)=>void)(options.initialDraft ?? draft);
+  (mapEditor.props.onDraftChange as (value:mapTypes.StorageMapDraft|null)=>void)(options.initialDraft === undefined ? draft : options.initialDraft);
   const assistant=component('AssistantPanel');
-  (assistant.props.onAction as (action:StorageAction)=>void)(options.initialAction ?? prepared);
+  if(options.initialAction!==null)(assistant.props.onAction as (action:StorageAction)=>void)(options.initialAction ?? prepared);
   const components=(name:string)=>{
     const nodes:Element[]=[];
     find(render(),node=>{if(node.type===name)nodes.push(node);return false});
@@ -195,4 +198,80 @@ test('completed map receipt preserves a different local draft and leaves a reloa
   assert.equal(view.scene,undefined);assert.equal(view.map_id,savedScene.map!.id);
   assert.equal(view.created_map_revision,1);
   assert.deepEqual(fixture.endpoints,['/api/storage/map','/api/storage']);
+});
+
+function nextProposal(base:mapTypes.StorageMapDraft|null):StorageMapProposal {
+  const next={...(base??draft),map_draft_id:base?.map_draft_id??randomUUID(),draft_revision:(base?.draft_revision??0)+1};
+  return {proposal_id:randomUUID(),base:{map_revision:base?.base_map_revision??null,draft_id:base?.map_draft_id??null,draft_revision:base?.draft_revision??null},draft:next,relations:[],relation_descriptions:[],assumptions:['아직 저장하지 않은 기본 배치'],recommended_location_keys:[],suggested_anchor_ids:[],source:{location_count:0,container_count:0,unassigned_container_count:0},preview:{...savedScene,map:null}};
+}
+
+test('map proposals from one text reply synchronously advance the same local draft without changing record targets',()=>{
+  const fixture=workspaceFixture({initialDraft:null,initialAction:null});
+  const assistant=fixture.component('AssistantPanel');
+  const accept=assistant.props.onMapProposal as (proposal:StorageMapProposal,generation:number)=>boolean;
+  const generation=assistant.props.mapDraftGeneration as number;
+  const first=nextProposal(null),second=nextProposal(first.draft);
+  assert.equal(accept(first,generation),true);
+  assert.equal(accept(second,generation),true,'second event sees the first proposal before React rerenders');
+  assert.equal(fixture.component('StorageMapEditor').props.draft,second.draft);
+  const cards=fixture.components('StorageMapProposalCard');
+  assert.deepEqual(cards.map(card=>card.props.status),['superseded','active']);
+  const updated=fixture.component('AssistantPanel').props;
+  assert.equal(updated.registrationContainerId,assistant.props.registrationContainerId);
+  assert.equal(updated.searchScope,assistant.props.searchScope);
+  assert.equal(updated.selectedContainerId,assistant.props.selectedContainerId);
+  assert.deepEqual(fixture.endpoints,[],'a proposal only updates local state');
+});
+
+test('discarded and manually edited map proposals reject stale event replay',()=>{
+  const fixture=workspaceFixture({initialDraft:null,initialAction:null});
+  const first=nextProposal(null);
+  const accept=fixture.component('AssistantPanel').props.onMapProposal as (proposal:StorageMapProposal)=>boolean;
+  assert.equal(accept(first),true);
+  (fixture.component('StorageMapProposalCard').props.onCancel as ()=>void)();
+  assert.equal(fixture.component('StorageMapEditor').props.draft,null);
+  assert.equal(accept(first),false,'an initial proposal cannot reappear after discard');
+  const current={...draft,draft_revision:7};
+  (fixture.component('StorageMapEditor').props.onDraftChange as (value:mapTypes.StorageMapDraft)=>void)(current);
+  const pending=nextProposal(current);
+  const edited={...current,draft_revision:8};
+  (fixture.component('StorageMapEditor').props.onDraftChange as (value:mapTypes.StorageMapDraft)=>void)(edited);
+  assert.equal(accept(pending),false,'late proposal cannot overwrite newer manual geometry');
+  assert.equal(fixture.component('StorageMapEditor').props.draft,edited);
+});
+
+test('an active item approval survives map proposals and blocks saving them until settled',async()=>{
+  const itemAction={...prepared,type:'register_items' as const,payload:{container_id:randomUUID(),items:[{name:'여권',quantity:1}]}};
+  const fixture=workspaceFixture({initialAction:itemAction});
+  const proposal=nextProposal(draft);
+  assert.equal((fixture.component('AssistantPanel').props.onMapProposal as (value:StorageMapProposal)=>boolean)(proposal),true);
+  assert.equal(fixture.component('AssistantPanel').props.activeAction,itemAction);
+  const card=fixture.component('StorageMapProposalCard');
+  assert.match(String(card.props.blockedReason),/진행 중인 변경안/);
+  await assert.rejects((card.props.onPrepare as (value:mapTypes.StorageMapDraft)=>Promise<void>)(proposal.draft),/진행 중인 변경안/);
+  assert.equal(fixture.component('StorageMapEditor').props.draft,proposal.draft);
+  assert.deepEqual(fixture.endpoints,[]);
+});
+
+test('a prepared map approval rejects a new proposal without changing its frozen draft',()=>{
+  const fixture=workspaceFixture();
+  const proposal=nextProposal(draft);
+  assert.equal((fixture.component('AssistantPanel').props.onMapProposal as (value:StorageMapProposal)=>boolean)(proposal),false);
+  assert.equal(fixture.component('StorageMapEditor').props.draft,draft);
+  assert.equal(fixture.component('AssistantPanel').props.activeAction,prepared);
+  assert.equal(fixture.components('StorageMapProposalCard').length,0);
+});
+
+test('an unseen initial agent proposal is rejected after edit and discard returns the draft to null',()=>{
+  const fixture=workspaceFixture({initialDraft:null,initialAction:null});
+  const assistant=fixture.component('AssistantPanel');
+  const generation=assistant.props.mapDraftGeneration as number;
+  const accept=assistant.props.onMapProposal as (proposal:StorageMapProposal,generation:number)=>boolean;
+  const pending=nextProposal(null);
+  const editor=fixture.component('StorageMapEditor');
+  (editor.props.onDraftChange as (value:mapTypes.StorageMapDraft|null)=>void)({...draft,draft_revision:4});
+  (fixture.component('StorageMapEditor').props.onDraftChange as (value:mapTypes.StorageMapDraft|null)=>void)(null);
+  assert.equal(accept(pending,generation),false,'an unseen response belongs to the pre-edit request even when both drafts are null');
+  assert.equal(fixture.component('StorageMapEditor').props.draft,null);
+  assert.equal(fixture.components('StorageMapProposalCard').length,0);
 });

@@ -34,9 +34,11 @@ export interface StorageMapSceneProps {
   onPointerUp?: (event: PointerEvent<SVGSVGElement>) => void
   onPointerCancel?: (event: PointerEvent<SVGSVGElement>) => void
   children?: ReactNode
+  sceneLabel?: string
+  sceneDescription?: string
 }
 /** Both the editor and chat use this renderer: viewBox scales pixels, never stored coordinates. */
-export function StorageMapScene({ columns, rows, regions, anchors, containers = [], highlightRegionIds = [], highlightContainerIds = [], selectedRegionId, selection, invalidSelection, showGrid = false, compact = false, className, onRegionSelect, onAnchorSelect, children, ...pointerEvents }: StorageMapSceneProps) {
+export function StorageMapScene({ columns, rows, regions, anchors, containers = [], highlightRegionIds = [], highlightContainerIds = [], selectedRegionId, selection, invalidSelection, showGrid = false, compact = false, className, onRegionSelect, onAnchorSelect, children, sceneLabel = '사용자가 배치한 보관 지도', sceneDescription = '빈 칸은 미지정 공간입니다. 표식은 마지막 기록 위치이며 실제 현재 위치를 자동으로 확인하지 않습니다.', ...pointerEvents }: StorageMapSceneProps) {
   const gridId = useId().replaceAll(':', '')
   const hasHighlight = highlightRegionIds.length > 0 || highlightContainerIds.length > 0
   const grouped = new Map<string, MapAnchor[]>()
@@ -45,8 +47,8 @@ export function StorageMapScene({ columns, rows, regions, anchors, containers = 
     grouped.set(key, [...(grouped.get(key) ?? []), anchor])
   }
   return <svg {...pointerEvents} viewBox={`0 0 ${columns * 40} ${rows * 40}`} className={cn('block w-full rounded-lg border bg-background', className)} role="img" aria-label={`보관 지도 ${columns}열 ${rows}행, ${regions.length}개 구획`}>
-    <title>사용자가 배치한 보관 지도</title>
-    <desc>빈 칸은 미지정 공간입니다. 표식은 마지막 기록 위치이며 실제 현재 위치를 자동으로 확인하지 않습니다.</desc>
+    <title>{sceneLabel}</title>
+    <desc>{sceneDescription}</desc>
     {showGrid && <><defs><pattern id={gridId} width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" className="stroke-border" strokeWidth="1" /></pattern></defs><rect width="100%" height="100%" fill={`url(#${gridId})`} /></>}
     {regions.map((region, index) => {
       const rect = regionBounds(region.cells)

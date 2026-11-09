@@ -11,7 +11,7 @@ export function StorageMapPreview({ value }: { value: Record<string, unknown> | 
   const newlyUnplaced = Array.isArray(value.newly_unplaced_containers) ? value.newly_unplaced_containers as { id: string; name: string }[] : []
   return <div className="space-y-2">
     <p className="text-sm font-medium">{scene.map.name} · {scene.map.columns}×{scene.map.rows}칸</p>
-    <StorageMapScene columns={scene.map.columns} rows={scene.map.rows} regions={scene.regions} anchors={scene.anchors} containers={scene.containers} compact />
+    <StorageMapScene columns={scene.map.columns} rows={scene.map.rows} regions={scene.regions} anchors={scene.anchors} containers={scene.containers} compact sceneLabel="승인용 지도 미리보기" sceneDescription="변경안에 고정된 배치입니다. 추천 표식이 포함될 수 있으며 저장 완료나 실제 현재 위치를 뜻하지 않습니다." />
     <ul className="space-y-1 text-xs">{scene.regions.map((region, index) => <li key={region.id}>{index + 1}. {region.location_name || '장소 미지정'} · {region.cells.length}칸</li>)}</ul>
     <p className="text-xs text-muted-foreground">{scene.regions.length}개 구획 · {scene.anchors.length}개 표식</p>
     {newLocations.length > 0 && <div className="rounded-md bg-muted p-2 text-xs"><p className="font-medium">함께 생성할 장소 {newLocations.length}개</p><ul>{newLocations.map((location, index) => <li key={index}>{location.name}</li>)}</ul></div>}
