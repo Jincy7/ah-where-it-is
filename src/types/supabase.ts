@@ -34,6 +34,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      storage_maps: {
+        Row: { id: string; user_id: string; name: string; columns: number; rows: number; revision: number; schema_version: number; updated_at: string }
+        Insert: { id?: string; user_id: string; name: string; columns: number; rows: number; revision?: number; schema_version?: number; updated_at?: string }
+        Update: { name?: string; columns?: number; rows?: number; revision?: number; updated_at?: string }
+        Relationships: []
+      }
+      storage_map_regions: {
+        Row: { id: string; map_id: string; location_id: string; color_key: string }
+        Insert: { id: string; map_id: string; location_id: string; color_key: string }
+        Update: { location_id?: string; color_key?: string }
+        Relationships: []
+      }
+      storage_map_cells: {
+        Row: { map_id: string; region_id: string; col: number; row: number }
+        Insert: { map_id: string; region_id: string; col: number; row: number }
+        Update: { col?: number; row?: number }
+        Relationships: []
+      }
+      storage_map_anchors: {
+        Row: { map_id: string; region_id: string; container_id: string; col: number; row: number }
+        Insert: { map_id: string; region_id: string; container_id: string; col: number; row: number }
+        Update: { region_id?: string; col?: number; row?: number }
+        Relationships: []
+      }
       user_ai_credentials: {
         Row: {
           user_id: string
@@ -547,6 +571,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      read_storage_map: { Args: { p_kind?: string; p_id?: string }; Returns: Json }
       confirm_storage_action: {
         Args: { p_action_id: string; p_revision: number; p_payload_hash: string; p_idempotency_key: string }
         Returns: Json

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { storageMapDraftSchema } from "./map-schema";
 import { itemSchema } from "@/lib/ai/schema";
 export type { StorageAction, StorageItem, StorageContainer, StorageLocation, ChangeInput } from "./types";
 
@@ -8,6 +9,7 @@ const description = z.string().max(1000).optional();
 const containerFields = { name, location_id: id.nullable().optional(), cover_media_id: id.nullable().optional() };
 const locationFields = { name, description };
 export const actionPayloadSchemas = {
+  save_storage_map: storageMapDraftSchema,
   register_items: z.object({ container_id: id, source_photo_id: id.optional(), source_photo_revision: z.number().int().positive().optional(), items: z.array(itemSchema.extend({ media_ids: z.array(id).max(10).optional() })).min(1).max(100) }).strict(),
   update_item: z.object({ item_id: id, name, quantity: z.number().int().min(1).max(9999), description }).strict(),
   move_item: z.object({ item_id: id, container_id: id }).strict(),
@@ -21,7 +23,7 @@ export const actionPayloadSchemas = {
   delete_location: z.object({ location_id: id }).strict(),
 };
 export const changeSchema = z.object({
-  type: z.enum(["register_items", "update_item", "move_item", "move_items", "delete_item", "create_container", "update_container", "delete_container", "create_location", "update_location", "delete_location"]),
+  type: z.enum(["register_items", "update_item", "move_item", "move_items", "delete_item", "create_container", "update_container", "delete_container", "create_location", "update_location", "delete_location", "save_storage_map"]),
   payload: z.record(z.string(), z.unknown()),
   action_id: id.optional(),
   revision: z.number().int().positive().optional(),

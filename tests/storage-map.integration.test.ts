@@ -1,0 +1,147 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { loadEnvFile } from 'node:process';
+import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import type { StorageAction } from '../src/lib/storage/types';
+import type { StorageMapDraft, StorageMapSceneData } from '../src/lib/storage/map-types';
+import { rectangleCells } from '../src/lib/storage/map-geometry';
+
+test('storage maps: atomic approvals, concurrent saves, live path resolution, ownership and all-write cleanup', { skip: process.env.RUN_STORAGE_INTEGRATION !== '1' }, async () => {
+  loadEnvFile('.env.local');
+  const url = process.env.SUPABASE_URL!, app = process.env.TEST_APP_URL ?? 'http://localhost:4211';
+  assert.ok(['localhost', '127.0.0.1'].includes(new URL(url).hostname));
+  assert.ok(['localhost', '127.0.0.1'].includes(new URL(app).hostname));
+  const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+  const users: string[] = [];
+  async function account() {
+    const email = `map-${randomUUID()}@example.com`, password = randomUUID();
+    const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    assert.ifError(created.error); const userId = created.data.user!.id; users.push(userId);
+    const cookies: { name: string; value: string }[] = [];
+    const client = createServerClient(url, process.env.SUPABASE_ANON_KEY!, { cookies: { getAll: () => cookies, setAll: values => { for (const value of values) { const i = cookies.findIndex(c => c.name === value.name); if (i >= 0) cookies[i] = value; else cookies.push(value); } } } });
+    assert.ifError((await client.auth.signInWithPassword({ email, password })).error);
+    const cookie = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+    const request = (path: string, init: RequestInit = {}) => fetch(app + path, { ...init, headers: { cookie, origin: app, ...init.headers } });
+    const json = (path: string, body: unknown) => request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    async function prepare(type: string, payload: unknown) { const r = await json('/api/storage/actions', { type, payload }); const body = await r.json(); assert.equal(r.status, 200, JSON.stringify(body)); return body.action as StorageAction; }
+    const confirm = (action: StorageAction) => json(`/api/storage/actions/${action.action_id}/confirm`, { revision: action.revision, payload_hash: action.payload_hash, idempotency_key: action.idempotency_key });
+    async function execute(type: string, payload: unknown) { const action = await prepare(type, payload); const r = await confirm(action); const body = await r.json(); assert.equal(r.status, 200, JSON.stringify(body)); return body.receipt.result; }
+    const scene = async (target?: { kind: string; id: string }): Promise<StorageMapSceneData> => { const r = await request(target ? `/api/storage/map/resolve?kind=${target.kind}&id=${target.id}` : '/api/storage/map'); const body = await r.json(); assert.equal(r.status, 200, JSON.stringify(body)); return body; };
+    return { userId, client, request, json, prepare, confirm, execute, scene };
+  }
+  function nextDraft(scene: StorageMapSceneData): StorageMapDraft {
+    return { base_map_revision: scene.map?.revision ?? null, map_draft_id: randomUUID(), draft_revision: 1, name: scene.map?.name ?? '우리 집', columns: scene.map?.columns ?? 12, rows: scene.map?.rows ?? 8, regions: scene.regions.map(region => ({ id: region.id, location_id: region.location_id, client_location_key: region.client_location_key, color_key: region.color_key, cells: region.cells })), anchors: scene.anchors, new_locations: [] };
+  }
+  try {
+    const a = await account(), b = await account();
+    assert.equal((await fetch(app + '/api/storage/map')).status, 401);
+    assert.equal((await a.scene()).map, null);
+    const pending = randomUUID(), regionId = randomUUID();
+    const first = nextDraft(await a.scene());
+    first.regions = [{ id: regionId, location_id: null, client_location_key: pending, color_key: 'green', cells: rectangleCells({ col: 0, row: 0 }, { col: 3, row: 3 }) }];
+    first.new_locations = [{ client_location_key: pending, name: '서재' }];
+    const [one, two] = await Promise.all([a.prepare('save_storage_map', first), a.prepare('save_storage_map', { ...first, map_draft_id: randomUUID() })]);
+    assert.equal((await a.client.from('locations').select('*')).data?.length, 0, 'preparation must not create pending places');
+    const responses = await Promise.all([a.confirm(one), a.confirm(two)]);
+    assert.deepEqual(responses.map(r => r.status).sort(), [200, 409], 'exactly one first save succeeds');
+    const successful = responses[0].status === 200 ? one : two;
+    const receipt = await (await a.confirm(successful)).json();
+    assert.equal(receipt.action.status, 'completed');
+    assert.equal((await a.client.from('locations').select('*')).data?.length, 1, 'retry does not duplicate places');
+    let saved = await a.scene();
+    assert.equal(saved.map?.revision, 1); assert.equal(saved.regions.length, 1);
+    const locationId = saved.regions[0].location_id!;
+    const container = await a.execute('create_container', { name: '책상 서랍', location_id: locationId });
+    const otherLocation = await a.execute('create_location', { name: '거실' });
+    const otherContainer = await a.execute('create_container', { name: '수납장', location_id: otherLocation.id });
+    const item = (await a.execute('register_items', { container_id: container.id, items: [{ name: '여권', quantity: 1 }] }))[0];
+    let edit = nextDraft(await a.scene());
+    const otherRegion = randomUUID();
+    edit.regions.push({ id: otherRegion, location_id: otherLocation.id, client_location_key: null, color_key: 'yellow', cells: rectangleCells({ col: 5, row: 0 }, { col: 7, row: 3 }) });
+    edit.anchors = [{ container_id: container.id, region_id: regionId, col: 1, row: 1 }, { container_id: otherContainer.id, region_id: otherRegion, col: 6, row: 1 }];
+    await a.execute('save_storage_map', edit);
+    saved = await a.scene({ kind: 'item', id: item.id });
+    assert.equal(saved.resolution?.container?.id, container.id);
+    assert.equal(saved.resolution?.anchor?.col, 1);
+    assert.equal(saved.containers.find(c => c.id === container.id)?.item_count, 1);
+    const priorRevision = saved.map!.revision;
+    const priorVersions = saved.resolution!.versions;
+    await a.execute('move_item', { item_id: item.id, container_id: otherContainer.id });
+    saved = await a.scene({ kind: 'item', id: item.id });
+    assert.equal(saved.resolution?.location?.id, otherLocation.id);
+    assert.equal(saved.resolution?.anchor?.col, 6);
+    assert.equal(saved.map?.revision, priorRevision, 'item moves do not change geometry revision');
+    assert.notDeepEqual(saved.resolution?.versions, priorVersions, 'domain versions detect location changes');
+    assert.equal((await b.scene({ kind: 'item', id: item.id })).resolution?.status, 'deleted', 'foreign and absent targets disclose no records');
+    assert.equal((await b.client.from('storage_maps').select('*')).data?.length, 0);
+    assert.ok((await a.client.from('storage_maps').update({ name: 'bypass' }).eq('id', saved.map!.id)).error);
+    assert.equal((await b.confirm(successful)).status, 404);
+    const forbidden = nextDraft(await b.scene()); forbidden.regions = [{ ...edit.regions[0] }];
+    assert.equal((await b.json('/api/storage/actions', { type: 'save_storage_map', payload: forbidden })).status, 404);
+    const overlapping = nextDraft(saved); overlapping.regions.find(region => region.id === otherRegion)!.cells = [{ col: 1, row: 1 }];
+    assert.equal((await a.json('/api/storage/actions', { type: 'save_storage_map', payload: overlapping })).status, 400);
+    const wrongAnchor = nextDraft(saved); wrongAnchor.anchors = [{ container_id: otherContainer.id, region_id: regionId, col: 0, row: 0 }];
+    assert.equal((await a.json('/api/storage/actions', { type: 'save_storage_map', payload: wrongAnchor })).status, 400);
+    const cancel = await a.prepare('save_storage_map', nextDraft(saved));
+    assert.equal((await a.json(`/api/storage/actions/${cancel.action_id}/cancel`, { revision: cancel.revision })).status, 200);
+    assert.equal((await a.confirm(cancel)).status, 409);
+    const beforeLocationDelete = await a.prepare('delete_location', { location_id: locationId });
+    assert.ok(Array.isArray(beforeLocationDelete.preview.before?.map_regions));
+    await a.execute('save_storage_map', { ...nextDraft(await a.scene()), name: '수정한 지도' });
+    assert.equal((await a.confirm(beforeLocationDelete)).status, 409, 'location deletion pins map revision');
+    saved = await a.scene();
+    const raceA = await a.prepare('save_storage_map', nextDraft(saved)), raceB = await a.prepare('save_storage_map', nextDraft(saved));
+    const raced = await Promise.all([a.confirm(raceA), a.confirm(raceB)]);
+    assert.deepEqual(raced.map(r => r.status).sort(), [200, 409]);
+    const beforeMove = await a.scene();
+    assert.ifError((await a.client.from('containers').update({ location_id: otherLocation.id }).eq('id', container.id)).error);
+    saved = await a.scene();
+    assert.ok(saved.map!.revision > beforeMove.map!.revision, 'legacy moves invalidate geometry');
+    assert.equal(saved.anchors.some(anchor => anchor.container_id === container.id), false);
+    assert.equal((await a.scene({ kind: 'container', id: container.id })).resolution?.placement, 'unplaced');
+    const deleting = await a.prepare('delete_location', { location_id: otherLocation.id });
+    const deleted = await a.confirm(deleting); assert.equal(deleted.status, 200, await deleted.text());
+    saved = await a.scene();
+    assert.equal(saved.regions.some(region => region.location_id === otherLocation.id), false);
+    assert.equal(saved.anchors.length, 0);
+    assert.equal(saved.containers.length, 2, 'location deletion keeps containers');
+    assert.equal((await a.scene({ kind: 'item', id: item.id })).resolution?.placement, 'no_location');
+    edit = nextDraft(saved); edit.regions = []; edit.anchors = [];
+    await a.execute('save_storage_map', edit);
+    assert.equal((await a.client.from('locations').select('*').eq('id', locationId)).data?.length, 1, 'removing drawing does not remove location');
+    assert.equal((await a.client.from('items').select('*').eq('id', item.id)).data?.length, 1);
+
+    // Bypass HTTP validation to prove the database rolls back locations and geometry atomically.
+    const bad = nextDraft(await a.scene()), badKey = randomUUID();
+    bad.new_locations = [{ client_location_key: badKey, name: '롤백 장소' }];
+    bad.regions = [{ id: randomUUID(), location_id: null, client_location_key: badKey, color_key: 'blue', cells: [{ col: 0, row: 0 }, { col: 2, row: 0 }] }];
+    const forged = { action_id: randomUUID(), user_id: a.userId, type: 'save_storage_map', payload: bad, expected_versions: {}, payload_hash: 'a'.repeat(64), idempotency_key: randomUUID(), preview: {}, revision: 1 };
+    assert.ifError((await admin.from('storage_actions').insert(forged)).error);
+    const rejected = await a.client.rpc('confirm_storage_action', { p_action_id: forged.action_id, p_revision: 1, p_payload_hash: forged.payload_hash, p_idempotency_key: forged.idempotency_key });
+    assert.ok(rejected.error, 'database rejects disconnected regions');
+    assert.equal((await a.client.from('locations').select('*').eq('name', '롤백 장소')).data?.length, 0);
+    assert.equal((await a.scene()).map!.revision, bad.base_map_revision, 'failed transaction does not advance revision');
+    await a.execute('delete_item', { item_id: item.id });
+    assert.equal((await a.scene({ kind: 'item', id: item.id })).resolution?.status, 'deleted');
+    const maxDraft = nextDraft(await b.scene()), maxKey = randomUUID();
+    maxDraft.columns = 64; maxDraft.rows = 64;
+    maxDraft.new_locations = [{ client_location_key: maxKey, name: '최대 격자' }];
+    maxDraft.regions = [{ id: randomUUID(), location_id: null, client_location_key: maxKey, color_key: 'neutral', cells: rectangleCells({ col: 0, row: 0 }, { col: 63, row: 63 }) }];
+    const started = performance.now();
+    await b.execute('save_storage_map', maxDraft);
+    console.log(`64x64 complete map first save: ${Math.round(performance.now() - started)} ms`);
+    assert.equal((await b.scene()).regions[0].cells.length, 4096);
+    const updateStarted = performance.now();
+    await b.execute('save_storage_map', nextDraft(await b.scene()));
+    console.log(`64x64 complete map replacement: ${Math.round(performance.now() - updateStarted)} ms`);
+    // Service-role cell edits must still validate the final whole rectangle.
+    const maxScene = await b.scene();
+    const invalidCellDelete = await admin.from('storage_map_cells').delete().eq('map_id', maxScene.map!.id).eq('col', 4).eq('row', 4);
+    assert.ok(invalidCellDelete.error);
+    assert.equal((await b.scene()).regions[0].cells.length, 4096, 'raw invalid service-role write is rolled back');
+    assert.ok((await b.client.from('storage_map_validation_queue').select('*')).error, 'client cannot bypass queued validation');
+    console.log('PASS map: first-save race, same-revision race, retries, atomic rollback, snapshot resolve, RLS, legacy moves, delete impact and domain preservation');
+  } finally { for (const id of users) assert.ifError((await admin.auth.admin.deleteUser(id)).error); }
+});

@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Textarea } from '@/components/ui/textarea';
 import type { AssistantPanelProps, PhotoDraftUpdate } from '@/components/storage-workspace/contracts';
 import type { AgentReply, ToolEvent } from '@/lib/agent/contracts';
+import type { StorageMapView } from '@/lib/storage/map-types';
 import type { StorageAction, WorkspaceItem } from '@/lib/storage/types';
 import { conversationHistory } from './conversation';
 import { useVoice } from './use-voice';
@@ -51,17 +52,20 @@ export function AssistantPanel(props: AssistantPanelProps) {
     registrationContainerId: props.registrationContainerId,
     activeActionId: props.activeAction?.action_id ?? null,
     activeActionRevision: props.activeAction?.revision ?? null,
+    activeActionLocked: props.activeActionLocked ?? false,
     photoDrafts: props.photoDrafts ?? [],
-  }), [props.selectedContainerId, props.searchScope, props.registrationContainerId, props.activeAction?.action_id, props.activeAction?.revision, props.photoDrafts]);
+  }), [props.selectedContainerId, props.searchScope, props.registrationContainerId, props.activeAction?.action_id, props.activeAction?.revision, props.activeActionLocked, props.photoDrafts]);
 
   const onEvent = useCallback((event: ToolEvent) => {
-    const result = event.result as { items?: WorkspaceItem[]; action?: StorageAction; photoDraft?: PhotoDraftUpdate; container_matches?: unknown[]; location_matches?: unknown[] };
+    const result = event.result as { items?: WorkspaceItem[]; action?: StorageAction; photoDraft?: PhotoDraftUpdate; mapView?: StorageMapView; mapError?: string; container_matches?: unknown[]; location_matches?: unknown[] };
     if (result.photoDraft && !current.current.onPhotoDraft(result.photoDraft)) {
       setError('사진 후보가 바뀌어 정정을 적용하지 못했습니다. 현재 내용을 확인해주세요.');
     }
     const hierarchyResult = event.name === 'get_location' || event.name === 'get_container' || result.container_matches?.length || result.location_matches?.length;
     if (result.items && !(result.items.length === 0 && hierarchyResult)) current.current.onSearchResults(result.items);
     if (result.action) current.current.onAction(result.action);
+    if (result.mapView) current.current.onMapView(result.mapView);
+    if (result.mapError) setError(result.mapError);
   }, []);
   const onTranscript = useCallback((role: 'user' | 'assistant', content: string) => {
     if (content.trim()) current.current.onMessage({ id: crypto.randomUUID(), role, content });

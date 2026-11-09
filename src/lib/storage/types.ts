@@ -29,7 +29,7 @@ export type WorkspaceData = {
 export type ChangeType =
   | "register_items" | "update_item" | "move_item" | "move_items" | "delete_item"
   | "create_container" | "update_container" | "delete_container"
-  | "create_location" | "update_location" | "delete_location";
+  | "create_location" | "update_location" | "delete_location" | "save_storage_map";
 export type ActionPayload = Record<string, unknown>;
 export type ActionReceipt = {
   action_id: string;
